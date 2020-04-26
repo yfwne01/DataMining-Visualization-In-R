@@ -9,8 +9,8 @@ Data Mining & Visualization In R
 
 01_group: general Viz in R
 
-02_group: Regression & Feature selection 
+02_group: Regression & Evaluation & Feature selection 
 
-03_group: KNN & NB
+03_group: K Nearest Neighbor & Naive Bayer
 
-04_group: Decison Tree & Logistic Regression 
+04_group: Decison Trees & Logistic Regression 
