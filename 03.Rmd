@@ -1,0 +1,235 @@
+---
+title: "Yufei_HW3"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#Section A
+#Question 1
+library(tidyverse)
+library(dplyr)
+#create the area code column
+set.seed(1050)
+Area_code1 <-sample(LETTERS, 1000, replace=TRUE)
+Area_code2 <-sample(LETTERS, 1000, replace=TRUE)
+
+#create the company column
+set.seed(1050)
+Company1<- sample("Alpha", 1000, replace = TRUE)
+Company2<- sample("Beta", 1000, replace = TRUE)
+
+
+#create the employee height column
+set.seed(1005)
+height1 <- sample(rnorm(1000,mean=160,sd=5), replace = TRUE)
+height2 <- sample(rnorm(1000,mean=170,sd=5),replace=TRUE)
+
+#create the data frame
+df1 <- tibble("Area_Code"=Area_code1, "Company"=Company1,"Employee_Height"=height1)
+df2 <- tibble("Area_Code"=Area_code2, "Company"=Company2,"Employee_Height"=height2)
+df3 <-full_join(df1, df2)
+df3
+
+plot1 <- ggplot(data=df3)+
+  geom_density(mapping=aes(x=df3$Employee_Height,fill=Company))+
+scale_fill_discrete() +
+scale_y_continuous() +
+xlab("Employee Height(cm)")+
+ylab("Count")+
+  ggtitle("The density plot on the height")
+
+plot1
+```
+
+```{r}
+# Question 2
+#part 1
+#create the new datafram
+# caculate the average height for each company
+target1 <-group_by(df1,Company)
+target2 <- summarize(target1, AvgHeight=mean(df1$Employee_Height,na.rm=TRUE)) 
+target2
+target3 <-group_by(df2,Company)
+target4 <- summarize(target3, AvgHeight=mean(df2$Employee_Height,na.rm=TRUE)) 
+target4
+df4 <- full_join(target2,target4,by = c("Company","AvgHeight"))
+df4
+
+#part 2 
+new <- df3 %>% group_by(Company,Area_Code) %>% 
+  summarise(AvgHeight=mean(Employee_Height,na.rm=TRUE))
+new
+#plot the target chart
+plot2 <- ggplot(data=new)+
+  geom_bar(mapping=aes(x=Area_Code,y=AvgHeight,fill=Company),stat="identity",position ="dodge")+
+  scale_x_discrete() +
+scale_fill_discrete() +
+scale_y_continuous() +
+theme(axis.text.x=element_text(angle = 360, hjust = 1))+
+coord_cartesian(ylim=c(150,180))+
+xlab("Area Code")+
+ylab("Average Employee Height(cm)")
+plot2
+
+```
+
+
+
+
+
+
+```{r}
+#Question 3
+#create the random employee weight and add it to the previous dataframe
+set.seed(1000)
+df5<- mutate(df3, "Employee_Weight(kg)"=sample(rnorm(2000,mean=65,sd=10), replace = TRUE))
+df6<- mutate(df5,"BMI"=`Employee_Weight(kg)`/((Employee_Height/100)^2))
+df7<- mutate(df6,BMI_Categories= ifelse(BMI <=18.5,"Underweight",ifelse(BMI>18.5 & BMI <= 25,"Normal weight",ifelse(BMI >25 & BMI<=30 ,"Overweight", ifelse(BMI >30, "Obesity","")))))
+df7
+
+#create the target plot
+df7 %>% ggplot(mapping=aes(df7$Employee_Height,df7$`Employee_Weight(kg)`))+
+  geom_point(mapping=aes(color=BMI_Categories))+
+  facet_grid(.~Company)+
+  xlab("Employee Height(cm)")+
+  ylab("Employee Weight(kg)")+
+  labs(color="BMI Categories")
+
+  
+
+```
+
+
+
+```{r}
+#Section B
+#Problem 1
+library(tidyverse)
+library(plyr)
+library(dplyr)
+library(haven)
+#upload the dataset
+dataset1 <-  read_xpt('https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/DEMO_I.XPT')
+
+#filter the ratio without missing values
+new111 <- dataset1[!is.na(dataset1$INDFMPIR),]
+#remove the ratio’s decimals 
+new111$INDFMPIR <- trunc(new111$INDFMPIR)
+
+#count1
+dataset2 <- group_by(new111,RIDRETH1,INDFMPIR)
+dataset3 <- dataset2 %>% dplyr::count(RIDRETH1,name="count1")
+dataset3 %>% dplyr::filter(!is.na(INDFMPIR))
+
+
+```
+
+```{r}
+# caculate the proportion of each ethnic families among all families at each annual family income value
+dataset4 <- plyr::ddply(dataset3,.(INDFMPIR),transform,prop1=count1/sum(count1))
+dataset4 %>% dplyr::filter(!is.na(INDFMPIR)) %>% group_by( RIDRETH1)
+
+```
+
+
+```{r}
+#caculate the proportion of each ethnic families among all families
+dataset5 <- group_by(new111,RIDRETH1)
+dataset6 <- dataset5 %>% dplyr::count(RIDRETH1,name="count2")
+  
+library(data.table)
+setDT(dataset6)[,prop2:=count2/sum(count2)]
+dataset6
+```
+
+
+
+
+```{r}
+#get the target data frame
+dataset7 <- full_join(dataset4,dataset6)
+dataset7 %>% dplyr::filter(!is.na(INDFMPIR)) %>% select(RIDRETH1,INDFMPIR,prop2,prop1)
+ 
+```
+
+```{r}
+#plot1 for black families (4)
+dataset7 %>% dplyr::filter(RIDRETH1==4) %>% 
+  ggplot()+
+  geom_bar(mapping=aes(INDFMPIR,prop1),stat="identity")+
+  coord_cartesian(xlim=c(0:5))+
+  geom_hline(yintercept=0.2108981,color="red")+
+  xlab("Annual family income value for Black Families")+
+  ylab("The proportion")
+  
+```
+
+#Answer
+Most balck families are under the poverty.
+The proportions of the annual family income values (0) are above the the proportion of famility over all familities, 
+and the proportion of "0" annual family income value is the highest number in the plot.
+
+```{r}
+#plot2 for Mexican American families (1)
+dataset7 %>% dplyr::filter(RIDRETH1==1) %>% 
+  ggplot()+
+  geom_bar(mapping=aes(INDFMPIR,prop1),stat="identity")+
+  coord_cartesian(xlim=c(0:5))+
+  geom_hline(yintercept=0.1866801,color="red")+
+  xlab("Annual family income value for Mexican American families")+
+  ylab("The proportion")
+
+
+```
+
+#Answer
+Most Mexican American families are under the poverty.
+The proportions of the annual family income values (0 and 1) are above the the proportion of famility over all familities,
+and the proportion of "0" annual family income value is the highest number in the plot.
+
+
+```{r}
+#plot3 for other Hispanic families (2)
+dataset7 %>% dplyr::filter(RIDRETH1==2) %>% 
+  ggplot()+
+  geom_bar(mapping=aes(INDFMPIR,prop1),stat="identity")+
+  coord_cartesian(xlim=c(0:5))+
+  geom_hline(yintercept=0.1269201,color="red")+
+  xlab("Annual family income value for other Hispanic families")+
+  ylab("The proportion")
+
+```
+
+#Answer
+Most other Hispanic families are over poverty. 
+The proportions of the annual family income values (0,1,3) are above the the proportion of famility over all familities, 
+and the proportion of "0" annual family income value is the highest number in the plot.
+      
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+

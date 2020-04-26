@@ -1,0 +1,119 @@
+---
+title: "HW1_Yufei_Wang"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+##Section A
+##Q1
+library(tidyverse)
+library(dplyr)
+
+iris$Species2<-factor(iris$Species,levels=levels(iris$Species)[c(3,2,1)])
+p1 <- ggplot(data=iris,aes(x=iris$Species2,y=iris$Petal.Width,fill=Species))+geom_boxplot()
+p1<- p1+xlab("Reordered Species")+ylab("Petal Width")+ggtitle("The relationship between the width of petal and species")
+p1
+```
+```{r}
+#Answer: The median sepal length of virginica is 2.0, the median sepal length of versicolor is around 1.28, and the median sepal length of setosa is around 0.23 with outliers.Therefore, from the boxplot, the sepal length seems to decrease from virginica to versicolor to setosa.
+```
+
+
+```{r}
+
+##Q2
+p2 <- ggplot(data=iris)
+p2 <- p2+geom_point(mapping=aes(x=iris$Sepal.Length,y=iris$Petal.Length,shape=Species,color=Species))
+p2<- p2+facet_grid(.~iris$Species)+xlab("Spepal length")+ylab("Petal Length")+ggtitle("The relationship between the length of Sepal versus the length of Petal ")
+p2
+```
+```{r}
+#Answer: For species setosa, there is no relationship between the length of Sepal versus the length of Petal.For species versicolor, there is a positive relationship that the length of Petal increases when the length of Sepal increases.For species virginica,there is a positive relationship that the length of Petal increases when the length of Sepal increases. Overall, there is a positive the relationship between the length of Sepal and the length of Petal.
+```
+
+
+```{r}
+##Q3
+p3 <- ggplot(data=iris)
+p3 <- p3+geom_point(mapping=aes(x=iris$Sepal.Length,y=iris$Petal.Length,shape=Species,color=Sepal.Width,size=Petal.Width))+scale_color_gradient(low="yellow",high="purple")
+p3<- p3+facet_wrap(~Species)+xlab("Spepal length")+ylab("Petal Length")+ggtitle("The relationship between four variables")
+p3
+
+```
+```{r}
+#Answer:For species setosa, there is no relationship between the length of Sepal and the length of Petal.The color showed that Sepal width ranged from 2.0 to 4.0, and the average Petal width ranged from 1 to 1.5.For species versicolor, there is a positive relationship that the length of Petal increases when the length of Sepal increases. The color showed that Sepal width ranged from 2 to 3.2, and the average Petal width ranged from 1 to 1.5.For species virginica,there is a positive relationship that the length of Petal increases when the length of Sepal increases.The color showed that Sepal width ranged from 2 to 3.7, and the average Petal width ranged from 1 to 1.5.Overall,there is the positive relationship between the length of Sepal and the length of Petal, and the sepal width and Petal width have no relationships with the length of Sepal and the length of Petal, which showed as clusters in the plot. 
+```
+
+```{r}
+##Section B
+##Q1
+#create the new datafram
+
+mpg1 <-data.frame("manufacturer"=mpg$manufacturer, "model"=mpg$model, "trans"=mpg$trans,"drv"=mpg$drv,"hwy"=mpg$hwy,"class"=mpg$class)
+colnames(mpg1)
+#use the R basic function to rename columns
+names(mpg1)
+names(mpg1)[names(mpg1) == "drv"] <- "driveType"
+names(mpg1)[names(mpg1) == "hwy"] <- "hwyMPG"
+names(mpg1)[names(mpg1) == "trans"] <- "TransmissionType"
+mpg1
+```
+
+```{r}
+##Q2
+##Create the new datafram
+mpg2 <- mpg1[mpg1$manufacturer %in% c("ford","honda","jeep","hyundai","nissan","toyota"),]
+result1 <- mpg2[mpg2$class=="suv" & mpg2$hwyMPG>"18" & mpg2$driveType=="4",]
+suv <- list(result1)
+suv[[1]]
+names(suv) <- "suv18"
+```
+
+
+```{r}
+##Q3
+##create the function
+applyFun_11 <- function(df,col_name,f,...){
+  m<-as.vector(df[[col_name]])
+  n <- f(m,...)
+  cat(as.character(substitute(f)),"of",as.character(substitute(col_name)),"is",deparse(n))
+}
+
+##outputs
+applyFun_11(mpg,"hwy",quantile, probs=(1:3/4))
+applyFun_11(suv[[1]],"hwyMPG",quantile,probs=(1:3/4))
+```
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
