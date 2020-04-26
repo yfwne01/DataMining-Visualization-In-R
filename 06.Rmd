@@ -1,0 +1,400 @@
+---
+title: "HW6"
+author: "Yufei"
+date: "3/21/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#load the packages
+library(readr)
+library(readxl)
+library(forecast)
+library(tidyverse)
+library(caret)
+library(rpart)
+library(caret)
+library(e1071)
+library(data.table)
+library(randomForest)
+library(leaps)
+library(MASS)
+library(readr)
+library(corrplot)
+library(gridExtra)
+library(formattable)
+```
+
+
+```{r}
+library(readr)
+tele_Churn <- read_csv("~/Desktop/WA_Fn-UseC_-Telco-Customer-Churn.csv")
+
+#check the missing values
+sapply(tele_Churn, function(x) sum(is.na(x)))
+
+#drop the missing values 
+telechurn01 <-na.omit(tele_Churn)
+
+#change the seniorCitizen column to factor
+telechurn02 <- telechurn01%>% 
+  mutate(SeniorCitizen = as.factor(SeniorCitizen))
+telechurn02$customerID <- NULL
+
+head(telechurn02)
+str(telechurn02)
+```
+
+```{r}
+#Explortary
+#Tele churn percentage
+telechurn02 %>% 
+  group_by(Churn) %>% 
+  summarise(Number = n()) %>%
+  mutate(Percent = prop.table(Number)*100) %>% 
+ggplot(aes(x=Churn, y=Percent)) + 
+  geom_col(aes(fill = Churn)) +
+  labs(title = "churn percentage") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_text(aes(label = sprintf("%.2f%%", Percent))) +
+  scale_colour_brewer(palette = "Set1") + theme_classic() 
+
+```
+
+
+```{r}
+#Customer Behaviors based on Churn and Not Churn
+#1 Churn is based on the tenure
+ telechurn02%>% 
+  group_by(tenure, Churn) %>% 
+  summarise(Number = n()) %>% 
+  ggplot(aes(x=tenure, y=Number)) +
+  geom_line(aes(col = Churn)) +
+  labs(x = "tenure (month)",
+       y = "number of customer",
+       title = "churn based on tenure") +
+  scale_x_continuous(breaks = seq(0, 100, 10)) +
+  scale_colour_brewer(palette = "Set1") + theme_classic()
+
+```
+```{r}
+#Correlation between numeric variables
+library(ggcorrplot)
+numeric_var <- sapply(telechurn02, is.numeric)
+matrix <- cor(telechurn02[,numeric_var])
+ggcorrplot(matrix, hc.order = TRUE,
+           type = "lower",
+           lab = TRUE,
+           lab_size = 3,
+           method="circle",
+           colors = c("tomato2", "white", "springgreen3"),
+           title="Correlogram of numeric variables",
+           ggtheme=theme_bw)
+
+```
+
+
+
+```{r}
+#Density plots for numerical variables
+#1.Tenure
+ a1 <-
+  ggplot(telechurn02,aes(x=tenure)) +
+  geom_density(aes(col = Churn))+
+  labs(x = "tenure",
+       y = "density",
+       title = "churn based on tenure") +
+  scale_colour_brewer(palette = "Set1") + theme_classic()+
+  xlim(0,100)
+  
+#2.Monthly charges
+ a2 <-
+  ggplot(telechurn02,aes(x=MonthlyCharges)) +
+  geom_density(aes(col = Churn)) +
+  labs(x = "monthly charges",
+       y = "density",
+       title = "churn based on monthly charges") +
+  scale_colour_brewer(palette = "Set1") + theme_classic()+
+  xlim(0,150)
+ 
+#3 Total charges
+ a3 <-
+  ggplot(telechurn02,aes(x=TotalCharges)) +
+  geom_density(aes(col = Churn)) +
+  labs(x = "total charges",
+       y = "density",
+       title = "churn based on total charges") +
+  scale_colour_brewer(palette = "Set1") + theme_classic()+
+  xlim(0,10000)  
+ 
+ grid.arrange(a1,a2,a3,nrow=2)
+```
+
+
+
+
+```{r}
+#Different customer chracteristics
+p1 <- ggplot(data=telechurn02, aes(x=Churn, group = gender)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    labs(title = "Gender")+
+    facet_grid(~gender) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+#1 is the senior citizen; 0 is not the senior citizen
+p2 <- ggplot(data=telechurn02, aes(x=Churn, group =SeniorCitizen)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    labs(title = "Senior Citizen")+
+    facet_grid(~SeniorCitizen) +
+    scale_y_continuous(labels = scales::percent)+  
+  coord_flip() + theme_minimal()
+
+#Yes means that the customer has partner; 
+p3<- ggplot(data=telechurn02, aes(x=Churn, group =Partner)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    labs(title = "Partner")+
+    facet_grid(~Partner) +
+    scale_y_continuous(labels = scales::percent)+  coord_flip() + theme_minimal()
+grid.arrange(p1,p2,p3, nrow=2)
+
+```
+
+
+```{r}
+#Paperless Billing
+
+p1 <- ggplot(data=telechurn02, aes(x=Churn, group = PaperlessBilling)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~PaperlessBilling) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+#Payment Methods
+
+p2 <- ggplot(data=telechurn02, aes(x=Churn, group = PaymentMethod)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~PaymentMethod) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+#Contract Methods
+
+p3 <- ggplot(data=telechurn02, aes(x=Churn, group = Contract)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~Contract) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+#internet service
+p4 <- ggplot(data=telechurn02, aes(x=Churn, group = InternetService)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~InternetService) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+ grid.arrange(p1,p2)
+ grid.arrange(p3,p4)
+```
+
+```{r}
+
+
+```
+
+
+```{r}
+
+#churn based on the service
+#phone service
+p1 <- ggplot(data=telechurn02, aes(x=Churn, group = PhoneService)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~PhoneService) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+#Multiple lines
+p2 <- ggplot(data=telechurn02, aes(x=Churn, group = MultipleLines)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~MultipleLines) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+
+grid.arrange(p1,p2)
+```
+
+```{r}
+
+#online security
+p4 <- ggplot(data=telechurn02, aes(x=Churn, group = OnlineSecurity)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~OnlineSecurity) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+#online backup
+p5 <- ggplot(data=telechurn02, aes(x=Churn, group = OnlineBackup)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~OnlineBackup) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+#device protection
+p6 <- ggplot(data=telechurn02, aes(x=Churn, group = DeviceProtection)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~DeviceProtection) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+grid.arrange(p4,p5,p6)
+```
+
+```{r}
+#TechSupport
+p7 <- ggplot(data=telechurn02, aes(x=Churn, group = TechSupport)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~TechSupport) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+#StreamingTV
+p8 <- ggplot(data=telechurn02, aes(x=Churn, group = StreamingTV)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~StreamingTV) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+#StreamingMovies
+p9 <- ggplot(data=telechurn02, aes(x=Churn, group = StreamingMovies)) + 
+          geom_bar(aes(y = ..prop.., fill = factor(..x..)), stat="count") + 
+          geom_text(aes( label = scales::percent(..prop..),
+                   y= ..prop.. ), stat= "count", vjust = -.5) +
+    labs(y = "Percent", fill="Churn") +
+    facet_grid(~StreamingMovies) +
+    scale_y_continuous(labels = scales::percent)+
+    coord_flip() + theme_minimal()
+
+grid.arrange(p7,p8,p9)
+```
+
+```{r}
+#churn prediction
+table(telechurn02$Churn)
+
+#chr variables to factor variables
+index01 <- sapply(telechurn02,is.character)
+telechurn02[index01] <- lapply(telechurn02[index01],as.factor)
+str(telechurn02)
+
+```
+
+```{r}
+#split the dataset
+set.seed(100)
+index <- createDataPartition(telechurn02$Churn, p = 0.8, list = FALSE)
+teletrain<- telechurn02[index, ]
+teletest<- telechurn02[-index, ]
+
+table(teletrain$Churn)
+table(teletest$Churn)
+```
+
+
+```{r}
+#decision tree
+library(rpart.plot)
+dtmodel <- rpart(formula = Churn ~., data =teletrain,
+            method = "class")
+rpart.plot(dtmodel)
+
+```
+
+```{r}
+library(caret)
+dt_test <- predict(object = dtmodel,  
+                            newdata = teletest,   
+                            type = "class")
+#confusion matrix for prediction
+dt1 <-table(Predicted = dt_test, Actual = teletest$Churn)
+dt1
+
+#Evaluation
+accuracy = sum(944+163)/ length(teletest$Churn)
+precision = dt1[1,1]/sum(dt1[,1])
+recall = dt1[1,1]/sum(dt1[1,])
+f = 2 * (precision * recall) / (precision + recall)
+
+cat(paste("Accuracy:\t", format(accuracy, digits=2), "\n",sep=" "))
+cat(paste("Precision:\t", format(precision, digits=2), "\n",sep=" "))
+cat(paste("Recall:\t\t", format(recall, digits=2), "\n",sep=" "))
+cat(paste("F-measure:\t", format(f, digits=2), "\n",sep=" "))
+
+```
+
+```{r}
+#Visualize ROC curve for Decision Tree Model
+library(ROCR)
+Pred.cart = predict(dtmodel, newdata =teletest, type = "prob")[,2] 
+Pred2 = prediction(Pred.cart, teletest$Churn) 
+plot(performance(Pred2, "tpr", "fpr"))
+abline(0, 1, lty = 2)
+
+#Get the AUC
+auc <- performance(Pred2, measure = "auc")
+auc@y.values[[1]]
+
+#AUC=0.799
+```
+

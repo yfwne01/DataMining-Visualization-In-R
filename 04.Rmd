@@ -1,0 +1,157 @@
+---
+title: "Yufei_HW4"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+#Problem 1
+# Download the two complete datasets
+library(readr)
+library(tidyverse)
+library(tidyr)
+
+#The Domestic general government health expenditure dataset
+dataset1 <- read_csv("~/Desktop/GHED_GGHE-D_pc_PPP_SHA2011(1).csv")
+
+#The Adult mortality rate dataset
+dataset2<- read_csv("~/Desktop/WHOSIS_000004(2).csv")
+
+```
+
+```{r}
+#Problem 1
+library(dplyr)
+#Make the first table tidy
+names(dataset1) <- dataset1[1,]
+datset11.filtered <- dataset1[2:nrow(dataset1), ]
+newdataset1 <-datset11.filtered %>% gather("2017","2016","2015","2014","2013","2012","2011","2010","2009","2008","2007","2006","2005","2004","2003","2002","2001","2000",key="Year",value="Values")
+newdataset1$Year = as.numeric(as.character(newdataset1$Year))
+
+
+#Make the second table tidy
+names(dataset2) <- dataset2[1,]
+datset22.filtered <- dataset2[2:nrow(dataset2), ]
+newdataset2 <- datset22.filtered %>% gather("Both sexes","Male","Female",key="Gender",value="Mortality_Rate_Per_1000_Population")
+newdataset2$Year = as.numeric(as.character(newdataset2$Year))
+newdataset2$Mortality_Rate_Per_1000_Population = as.numeric(as.character(newdataset2$Mortality_Rate_Per_1000_Population))
+
+# join the two tables and use head() to present the new data table
+newdataset3 <- left_join(x=newdataset2,y=newdataset1,by=c("Country","Year"))
+head(newdataset3)
+
+```
+
+```{r}
+#Problem 2
+ newdataset3 %>% filter(Gender==c("Male","Female")) %>% ggplot()+
+  geom_point(mapping=aes(x=Values,y=(Mortality_Rate_Per_1000_Population/1000),color=Gender))+
+  scale_x_continuous(name="Health expenditure per capita (PPP)") +
+  scale_fill_discrete() +
+  scale_y_continuous(name="Adult mortality rate", breaks=seq(0,1,0.05)) +
+  ggtitle("Health expenditure per capita vs Adult mortality rate for Male and Female")
+  
+
+```
+
+
+Answer:
+As you can see the plot above, for both male and female, the adult mortality rate decreases when the total health expenditure per capita increases. Also, the overall adult mortality rate of female is less than the overall adult mortality rate of male.The gap of life expectancy between women and men helps to explain my observation, because this survey indicated that the global average life expectancy increased by 5.5 years between 2000 and 2016,and women live longer than men all around the world. 
+
+```{r}
+#Problem 3
+newdataset4 <- newdataset3 %>% filter(Gender=="Both sexes") 
+newdataset4$Year <- as.character(newdataset4$Year )
+
+  ggplot(data=newdataset4, aes(x=Year,y=Mortality_Rate_Per_1000_Population))+
+  geom_boxplot()+
+  geom_smooth(method = "auto", aes(group=1))+
+scale_fill_discrete() +
+scale_y_continuous(name="Adult mortality rate per 1000 population") +
+ggtitle("The Year vs Adult mortality rate per 1000 population for both sexes ")
+
+```
+
+
+Answer:
+The smooth line shows that for both sexes, the aduly mortality rate per 1000 population for both sexes decreases between 2000 and 2016. As you can see from this chart, the median adult mortality is around 0.17, the maximum adult mortality rate is around 0.7. Most outliers are in the 4th quartile group with large ranges, which means that there are obviously various adult mortality rates for both sexes in different countries.
+
+
+```{r}
+#Problem 4
+newdataset5 <- newdataset3 %>% filter(Gender=="Both sexes",Country=="United States of America") 
+newdataset5$Year <- as.character(newdataset5$Year ) 
+
+  ggplot(data=newdataset5,aes(x=Year,y=Mortality_Rate_Per_1000_Population)) +
+  geom_point()+
+  geom_smooth(method = "auto", aes(group=1))+
+scale_fill_discrete() +
+scale_y_continuous(name="Adult mortality rate per 1000 population") +
+  xlab("Year")+
+ggtitle("The Year vs Adult mortality rate per 1000 population for both sexes ")
+  
+
+```
+
+
+Answer:
+ It matches with problem 2 that the mortality rates for male and female decrease with the increase of the health expenditure from 2000 to 2012. However, from the drug overdose death rates table, the death rates increase drmatically from 2000 to 2010 for all persons, and the birth rating decreases at the same time. Therefore, there is a concave-up shape in the grapgh,and the adult mortality rates in US increases after 2012.
+
+```{r}
+#Problem 5
+newdataset3 %>% filter(Country=="United States of America" | Country=="Canada",Year %in% c(2008,2009,2010,2011,2012,2013,2014,2015,2016)) %>%
+  ggplot(aes(x=Year,y=Mortality_Rate_Per_1000_Population,color=Gender))+
+  geom_point()+
+  geom_smooth(method = "auto", aes(group=1))+
+  facet_wrap(~ Country)+
+  scale_y_continuous(breaks=seq(0,300,10))+
+  xlab("Year")+
+  ylab("Adult mortality rate per 1000 population")+
+  labs(size="Health expenditure per capita (PPP)")
+
+
+
+```
+
+
+
+Answer: 
+For both charts, the smooth lines represent the adult mortality rates of both sexes in Canada and US.The mortality rates of females are less than the mortality rates of males for Cnanada and US.
+There is the difference.The adult mortality rates of Canada decrease from 2008 to 2016, but the adult mortality rates of US increase slightly from 2008 to 2016, which matches result from the problem 4 plot.Reasons for the increasing adult mortality rates in US are: the crude birth rates show that the live birth rates per 1000 women decrease from 2010, but the drug overdose death rates consistantly increase from 2010, therefore, the overall adult mortality rates of US increase from 2010. 
+
+
+
+```{r}
+#Problem 6
+newdataset3 %>% filter(Country=="Singapore" | Country=="New Zealand") %>%
+  ggplot(aes(x=Year,y=Mortality_Rate_Per_1000_Population,color=Gender))+
+  geom_point(aes(size=Values))+
+  geom_smooth(method = "auto", aes(group=1))+
+  facet_wrap(~ Country)+
+  scale_y_continuous(breaks=seq(0,200,10))+
+  xlab("Year")+
+  ylab("Adult mortality rate per 1000 population")+
+  labs(size="Health expenditure per capita (PPP)")
+
+
+```
+
+
+Answer:
+For both charts, the smooth lines represent the adult mortality rates of both sexes in New Zealand and Singapore.The mortality rates of females are less than the mortality rates of males for both countries.
+Expenditure on health measures the final consumption of health goods and services.By adding the size aesthetic to visualize the health expenditure, we can see that both New Zealand and Singapore increase the expenditure on health from 2000 to 2016, and the adult mortality rates for both countries decrease based on that.
+
+```{r}
+
+```
+
+
