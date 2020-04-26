@@ -1,0 +1,965 @@
+---
+title: "IE7275 HW4 Group 5"
+author: "Group 5"
+date: "4/18/2020"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+    fig_height: 7
+    fig_width: 10
+    highlight: tango
+    theme: readable
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Problem 9.1 
+
+### Competitive Auctions on eBay.com.
+
+```{r, message=FALSE}
+library(tidyverse)
+df1 <- read_csv(file="./eBayAuctions.csv")
+```
+
+
+```{r, message=FALSE}
+#Converting character strings to binary factors
+library(caret)
+df1$Duration <- as.factor(df1$Duration)
+dmy1 <- dummyVars(" ~ .", data = df1[c(1,2,4,5)])
+trsf1 <- data.frame(predict(dmy1, newdata = df1))
+df1 <- data.frame(c(df1,trsf1))
+```
+
+```{r}
+names(df1)[names(df1) == "Competitive."] <- "Competitive?"
+df1$`Competitive?` <- as.factor(df1$`Competitive?`)
+df1 <- df1[, c(3,6:41)]
+```
+
+```{r}
+#covert binary factor to factors
+cols <- c(5:37)
+df1[cols] <- lapply(df1[cols], factor)
+```
+
+```{r}
+#Split the data into training (60%) and validation (40%) datasets
+set.seed(111)
+train.index <- sample(row.names(df1), 0.6*dim(df1)[1])  
+valid.index <- setdiff(row.names(df1), train.index)  
+train.df <- df1[train.index,]
+valid.df <- df1[valid.index,]
+```
+
+**a. Fit a classification tree using all predictors, using the best-pruned tree. To avoid overfitting, set the minimum number of records in a terminal node to 50 (in R: minbucket = 50). Also, set the maximum number of levels to be displayed at seven (in R: maxdepth = 7). Write down the results in terms of rules. (Note: If you had to slightly reduce the number of predictors due to software limitations, or for clarity of presentation, which would be a good variable to choose?)**
+
+```{r, message=FALSE}
+library(rpart)
+library(rpart.plot)
+
+# classification tree
+ct <- rpart(`Competitive?` ~ ., data = train.df, control = rpart.control(minbucket = 50, maxdepth = 7), method = "class")
+# prune by lower cp
+pruned.ct <- prune(ct,
+                   cp = ct$cptable[which.min(ct$cptable[,"xerror"]),"CP"])
+# plot tree
+prp(pruned.ct, type = 1, extra = 1, split.font = 1, varlen = -10, box.palette="pink")
+```
+
+
+```{r}
+#to easily interpret model results
+#print(pruned.ct, digits = 2)
+```
+<br>
+
+##### Interpretation
+<p>
+IF OpenPrice>=3.6 AND ClosePrice< 10 THEN class=0 (non-competitive)
+
+IF OpenPrice< 3.6 AND ClosePrice>=3.6 THEN class=1 (competitive)
+
+IF OpenPrice>=11 AND ClosePrice>=10 AND sellerRating>=562 THEN class=0 (non-competitive)
+
+IF OpenPrice>=11 AND ClosePrice>=10 AND sellerRating< 562 THEN class=1 (competitive)
+
+IF 3.6 <= OpenPrice < 11 AND ClosePrice>=10 THEN class=1 (competitive)
+
+IF 1.8 <= OpenPrice < 3.6 AND ClosePrice< 3.6 THEN class=0 (non-competitive)
+
+IF OpenPrice< 1.8 AND ClosePrice< 3.6 THEN class=1 (competitive)
+
+OpenPrice, ClosePrice, and sellerRating are significant predictors for predicting the probability of being competitive.
+
+
+**b. Is this model practical for predicting the outcome of a new auction?**
+
+No, items with OpenPrice above 11 have no upper bound for the ClosePrice, the new data requires sellerRating to determine the aution competitiveness.
+
+**c. Describe the interesting and uninteresting information that these rules provide**
+
+Interesting: Sellers with lower sellerRatings gain more competitive autions for tems with OpenPrice above 11.
+
+Uninteresting: It's not that unusual for low-priced items with OpenPrice between 1.8 - 3.6 and ClosePrice less than 3.6 to be in non-competitive auction category as the max prices are linkely reached with only a few bids.
+
+**d.Fit another classification tree (using the best-pruned tree, with a minimum number of records per terminal node = 50 and maximum allowed number of displayed levels = 7), this time only with predictors that can be used for predicting the outcome of a new auction. Describe the resulting tree in terms of rules. Make sure to report the smallest set of rules required for classification**
+</p>
+
+```{r}
+# ClosePrice won't be use for actual competitive auction prediction
+ct2 <- rpart(`Competitive?` ~ . -`ClosePrice`, data = train.df, control = rpart.control(minbucket = 50, maxdepth = 7), method = "class")
+# plot tree
+pruned.ct2 <- prune(ct2,
+                   cp = ct2$cptable[which.min(ct2$cptable[,"xerror"]),"CP"])
+prp(pruned.ct2, type = 1, extra = 1, split.font = 1, varlen = -10, box.palette="pink")
+```
+
+```{r}
+print(pruned.ct2, digits = 2)
+```
+<br>
+
+##### Interpretation
+<p>
+IF OpenPrice>=3.6 AND sellerRating>=592 THEN class=0 (non-competitive)
+
+IF OpenPrice>=3.6 AND sellerRating< 592 AND currencyEUR=0 THEN class=1 (competitive)
+
+IF OpenPrice>=3.6 AND sellerRating< 592 AND currencyEUR=1 THEN class=0 (non-competitive)
+
+IF 1.8 <= OpenPrice < 3.6 AND sellerRating>=2601 THEN class=0 (non-competitive)
+
+IF 1.8 <= OpenPrice < 3.6 AND sellerRating<2601 THEN class=1 (competitive)
+
+IF OpenPrice< 1.8 THEN class=1 (competitive)
+
+OpenPrice and sellerRating are significant predictors for predicting the probability of being competitive.
+
+
+**e.Plot the resulting tree on a scatter plot: Use the two axes for the two best (quantitative) predictors. Each auction will appear as a point, with coordinates corresponding to its values on those two predictors. Use different colors or symbols to separate competitive and noncompetitive auctions. Draw lines (you can sketch these by hand or use R) at the values that create splits. Does this splitting seem reasonable with respect to the meaning of the two predictors? Does it seem to do a good job of separating the two classes?**
+</p>
+
+
+```{r, message=FALSE}
+library(ggplot2)
+ggplot(df1, aes(log(sellerRating), log(OpenPrice))) +
+  geom_point(aes(color = as.factor(`Competitive?`))) +
+  geom_line(aes(x = log(592))) +
+  geom_line(aes(y = log(1.8))) +
+  scale_color_discrete(name = "Competitive?", labels = c("No", "Yes")) +
+  xlab("Open Prices (log)") + ylab("Seller Ratings (log)")
+```
+<br>
+
+##### Interpretation
+<p>
+Does this splitting seem reasonable with respect to the meaning of the two predictors? Does it seem to do a good job of separating the two classes?
+
+The split seems to be working moderately well as most of the non-competitive autions are shown to be in the top-right section.
+
+**f.Examine the lift chart and the confusion matrix for the tree. What can you say about the predictive performance of this model?**
+</p>
+```{r}
+#install.packages('e1071')
+library(caret)
+library(e1071)
+# classify records in the validation data.
+# set argument type = "class" in predict() to generate predicted class membership.
+pruned.ct.pred.valid <- predict(pruned.ct,valid.df,type = "class")
+confusionMatrix(pruned.ct.pred.valid,valid.df$`Competitive?`)
+```
+
+```{r, message=FALSE}
+#lift chart
+pred.tree02.prob<- predict(pruned.ct,valid.df,type = "prob")
+pred.tree02 <- predict(pruned.ct,valid.df,type="class")
+#p168
+library(gains)
+gain <- gains(as.numeric(valid.df$`Competitive?`),pred.tree02.prob[,2], groups = dim(valid.df)[1])
+# plot lift chart
+plot(c(0,gain$cume.pct.of.total*sum(as.numeric(valid.df$`Competitive?`)))~c(0,gain$cume.obs), xlab="# cases", ylab="Cumulative", main="", type="l")
+lines(c(0,sum(as.numeric(valid.df$`Competitive?`)))~c(0, dim(valid.df)[1]), lty=2)
+```
+
+<br>
+
+##### Interpretation
+<p>
+
+The model has the accuracy of 0.782.
+
+For a given number of records (x-axis), the lift curve value on the y-axis tells us how much better we are doing compared to random assignment.
+The plotted lift above shows that this is a good classifier as it gives us a high lift when we act on only a few records. As we include more records, the lift decreases. We can conclude that although our model is not perfect, it seems to perform much better than the random benchmark.
+
+
+**g.Based on this last tree, what can you conclude from these data about the chances of an auction obtaining at least two bids and its relationship to the auction settings set by the seller (duration, opening price, ending day, currency)? What would you recommend for a seller as the strategy that will most likely lead to a competitive auction?**
+
+Based on this last tree, any items with open prices at least 1.8 with lower sellerRating have a better chance at gaining competitive auctions with an exception for items sold in Euro.
+
+General sellers can use this as guidline to gain competitive bids.
+
+</p>
+
+## Problem 9.2
+
+### Predicting Delayed Flights
+
+```{r}
+#library(tidyverse)
+Flights <- read_csv("./FlightDelays.csv")
+```
+
+##### Data Preprocessing
+
+```{r}
+library(rpart) 
+#install.packages('rpart.plot')
+library(rpart.plot)
+```
+
+```{r}
+# Transform variable day of week (DAY_WEEK) info a categorical variable
+Flights$DAY_WEEK <- as.factor(Flights$DAY_WEEK)
+```
+
+```{r}
+# drop the irrelevant columns (3,6,7,11,12)
+Flights$DEP_TIME <- NULL
+Flights$FL_DATE <- NULL
+Flights$FL_NUM <- NULL
+Flights$DAY_OF_MONTH <- NULL
+Flights$TAIL_NUM <- NULL
+#str(Flights)
+```
+
+```{r}
+#partition the data into training (60%) and validation (40%) sets
+set.seed(1006)
+index<- sample(1:nrow(Flights),size=nrow(Flights)*0.6,replace
+= FALSE)
+ttrain.df<- Flights[index,] # 60% training data
+ttest.df<- Flights[-index,]
+```
+
+
+**a. Fit a classification tree to the flight delay variable using all the relevant predictors. Do not include DEP_TIME (actual departure time) in the model because it is unknown at the time of prediction (unless we are generating our predictions of delays after the plane takes off, which is unlikely). Use a pruned tree with maximum of 8 levels, setting cp = 0.001. Express the resulting tree as a set of rules.**
+
+
+```{r}
+ttrain.df$CRS_DEP_TIME <- cut(ttrain.df$CRS_DEP_TIME,breaks =c(0,300,600,900,1200,1500,1800,2100,2400),labels = c("1","2","3","4","5","6","7","8"))
+
+library(rpart)
+library(rpart.plot)
+# classification tree
+class.tree <- rpart(`Flight Status`~ .,data = ttrain.df,
+                    control = rpart.control(maxdepth = 8, cp=0.001),method = "class")
+printcp(class.tree)
+# plot tree
+prp(class.tree,type = 1,extra = 1, under = TRUE, split.font = 2,varlen = -10, box.palette="pink")
+
+```
+```{r}
+#to easily interpret model results
+print(class.tree, digits = 2)
+```
+
+
+##### Interpretation 
+
+<p>
+16 rules can be interpreted for the above tree as seen from the result above. Unfortunately we cannot manually write them down. Listing down a few of them. 
+
+IF Weather=1 THEN class = delayed
+
+IF Weather!=1 AND Carrier=CO,DH,MQ,RU AND DAY_WEEK =1,3,5,7 THEN class= on-time.
+
+IF Weather!=1 AND Carrier=CO,DH,MQ,RU AND DAY_WEEK =1,3,5,7 AND CRS_DEP_TI >= 6,7,8 AND DEST = LGA THEN class= delayed.
+
+IF Weather!=1 AND Carrier=CO,DH,MQ,RU AND AND DEST = JFK THEN class = ontime.
+
+IF Weather!=1 AND Carrier=CO,DH,MQ,RU AND DAY_WEEK =1,3,5,7 AND CRS_DEP_TI >= 7 THEN class = ontime
+
+IF Weather!=1 AND Carrier=CO,DH,MQ,RU AND DEST =JFK AND Carrier = DL THEN ontime.
+
+</p>
+
+
+**b. If you needed to fly between DCA and EWR on a Monday at 7:00 AM, would you be able to use this tree? What other information would you need? Is it available in practice? What information is redundant?**
+
+No we will not be able to use this classification tree to identify the flight schedule between DCA and EWR on a Monday at 7:00 AM. This is primarily because the variable based on which the tree is split does not allow this kind of detail. We do not have ORIGIN being displayed in the tree to find this condition. We might need information like frequency of the of the flight route for that week or day alongwith all the details for the route. The information that is redundant here would be the carrier and also the noise in labels. It is adding unnecessary weight to the tree.  
+
+
+**c. Fit the same tree as in (a), this time excluding the Weather predictor. Display both the pruned and unpruned tree. You will find that the pruned tree contains a single terminal node.**
+
+
+```{r}
+
+#Unpruned Tree
+
+train2.df <- ttrain.df[ -c(6) ]
+library(rpart)
+library(rpart.plot)
+# classification tree
+class.tree1 <- rpart(`Flight Status`~ .,data = train2.df,
+                    control = rpart.control(maxdepth = 8, cp=0.001),method = "class")
+printcp(class.tree1)
+# plot tree
+prp(class.tree1,type = 1,extra = 1, under = TRUE, split.font = 2,varlen = -10, box.palette="pink")
+
+```
+
+```{r}
+#Interpret model results using rules
+print(class.tree1, digits = 2)
+```
+
+```{r}
+#Find the most important variables
+t(t(class.tree1$variable.importance))
+```
+
+```{r}
+# argument cp sets the smallest value for the complexity parameter. 
+cv.ct <- rpart(`Flight Status` ~ ., data = train2.df, method = "class", 
+              control = rpart.control(cp=0.001))
+printcp(cv.ct)
+```
+
+```{r}
+
+#Pruned Tree
+
+# prune by lower cp
+
+pruned.ct <- prune(cv.ct, cp = cv.ct$cptable[which.min(cv.ct$cptable[,"xerror"]),"CP"]) 
+#length(pruned.ct$frame$var[pruned.ct$frame$var == "<leaf>"]) 
+
+prp(pruned.ct, type = 1, extra = 1, split.font = 1, box.palette="pink")
+
+```
+
+
+**i. How is the pruned tree used for classification? (What is the rule for classifying?)**
+
+There are chances that a classification tree might overfit the dataset. Hence, we go with pruning the tree. Pruning is mostly done to reduce the chances of overfitting the tree to the training data and reduce the overall complexity of the tree. 
+
+The main rules to be considered are - 
+* The weakest branches, which hardly reduce the error rate, should be removed
+* Should successively select a decision node and redesignating it as a terminal node
+
+**ii. To what is this rule equivalent?**
+
+Firstly, grow the tree on the training portion and use the validation set to prune. Then, go over each node of the tree, pretend that you remove the node and then see how well this pruned tree would do on the validation set. In the end you remove the node that overfitts the data and hurts performace on the validation set.
+
+**iii. Examine the unpruned tree. What are the top three predictors according to this tree?**
+
+According to the unpruned tree the top 3 predictors are CARRIER, DISTANCE and DEST 
+
+**iv. Why, technically, does the pruned tree result in a single node?**
+
+The tree keeps splitting until the accuracy is maximum and a singleton subset is found in the end. The tree gets bigger and deeper. In pruning we trim off the branches of the tree, that is remove the decision nodes starting from the leaf node. The leaf node here is the last single node that cannot be split further. This is done in a way such that the accuracy of the model is not disturbed and the model is more generalised.
+
+**v. What is the disadvantage of using the top levels of the unpruned tree as opposed to the pruned tree?**
+
+The unpruned tree can produce good prediction on training data, but the basic tree is likely to over fit the data, leading to poor test performance. This is because the resulting trees tend to be too complex. Using the top levels of the unrpuned tree will certainly reduce tree size, but it is too short sighted. A smaller tree with fewer splits often leads to lower variance, easier interpretation and lower test errors, at the cost of a little bias. A pruned tree could be used, wherein a better strategy is used to grow a large tree, then prune it back to obtain a better sub tree. The main goal is to select a sub tree that leads to the lowest test error rate. We want our model to be more accurate for the unseen data.
+
+**vi. Compare this general result to that from logistic regression in the example in Chapter 10. What are possible reasons for the classification tree’s failure to find a good predictive model?**
+
+<p>
+Looking at the interpretation in the example in Chapter 10, it can be seen that the logistic regression model, more accurately classifies nondelayed flights and is less accurate in classifying flights that were delayed. This model can be used in a scenario when we want to know the flights that would most likely be delayed for any random given set of flights.
+
+When using the classification tree model, the biggest disadvantage is that the tree is susceptible to overfitting the training data. What we mean by this is that eventually each leaf will reperesent a very specific set of attribute combinations that are seen in the training data, and the tree will consequently not be able to classify attribute value combinations that are not seen in the training data. They split into smaller and smaller regions with non-linear boundary; although it classifies better it does not give a good result on unseen or test data. Also it is severly affected by the noise. Hence, the logistic regression's simple linear boundry generalizes better and gives better results with unknown data over a classification tree.
+
+
+</p>
+
+
+## Problem 9.3
+
+### Predicting Prices of Used Cars (Regression Trees)
+
+```{r}
+library(tidyverse)
+car_data <- read_csv("./ToyotaCorolla.csv")
+head(car_data)
+```
+
+
+*Data Preprocessing. Split the data into training (60%), and validation (40%) datasets.*
+
+```{r}
+set.seed(22)
+train_index <- sample(c(1:dim(car_data)[1]), dim(car_data)[1]*0.6)  
+train_data <- car_data[train_index, ]
+valid_data <- car_data[-train_index, ]
+```
+
+
+**a. Run a regression tree (RT) with outcome variable Price and predictors Age_08_04, KM, Fuel_Type, HP, Automatic, Doors, Quarterly_Tax, Mfg_Guarantee, Guarantee_Period, Airco, Automatic_Airco, CD_Player, Powered_Windows, Sport_Model, and Tow_Bar. Keep the minimum number of records in a terminal node to 1, maximum number of tree levels to 100, and cp = 0.001, to make the run least restrictive.**
+
+
+```{r}
+set.seed(22)
+library(rpart)
+library(rpart.plot)
+tr <- rpart(Price ~  Age_08_04 + KM + Fuel_Type + HP + Automatic + Doors + Quarterly_Tax +
+             Mfr_Guarantee + Guarantee_Period + Airco + Automatic_airco + CD_Player +
+             Powered_Windows + Sport_Model + Tow_Bar, data = train_data, method = "anova", minbucket = 1, maxdepth = 30, cp = 0.001)
+prp(tr, box.palette = "Purples")
+
+```
+
+
+**i. Which appear to be the three or four most important car specifications for predicting the car’s price?**
+
+```{r}
+#we can transpose the "vector" to create a column vector with the variable labels to get the variable importance
+
+t(t(tr$variable.importance))
+```
+
+Based on our decision tree vector; Age, Auto AC, KM, and Quarterly Tax seem to be the top predictors of car price.
+
+**ii. Compare the prediction errors of the training and validation sets by examining their RMS error and by plotting the two boxplots. What is happening with the training set predictions? How does the predictive performance of the validation set compare to the training set? Why does this occur?**
+
+```{r}
+library(forecast)
+
+#calculate training and validation accuracy
+accuracy(predict(tr, train_data), train_data$Price)
+
+accuracy(predict(tr, valid_data), valid_data$Price)
+
+#calculating errors by subtracting the prediction from the actual
+train_err <-predict(tr, train_data) -train_data$Price
+valid_err <-predict(tr, valid_data) -valid_data$Price
+
+#create a dataframe from the training and validation errors in order to plot
+err <-data.frame(Error = c(train_err, valid_err), 
+                 Set = c(rep("Training", length(train_err)),
+                        rep("Validation", length(valid_err))))
+
+#error box plots
+boxplot(Error~Set, data = err, main="RMS Errors",
+        xlab = "Set", ylab = "Error",
+        col = "blueviolet", medcol = "darkgoldenrod1", boxlty=0, border="black",
+        whisklty = 1, staplelwd = 4, outpch = 13, outcex = 1, outcol = "darkslateblue")
+
+```
+
+The training data has fewer error outliers and when compared to the validation data it appears to be performing better, but still within a similar range as our validation data. This is a good thing because it indicates that we have split our training data into a large enough sample size. If the validation had been more accurate we would need to consider the possibility that we had underfit the data.
+
+
+**iii. How can we achieve predictions for the training set that are not equal to the actual prices?**
+
+If we wanted to get predictions in a training set that are not equal to the actual prices we would want to experiment with making the training sample size smaller.
+
+**iv. Prune the full tree using the cross-validation error. Compared to the full tree, what is the predictive performance for the validation set?**
+
+```{r}
+#prune the tree
+tr_shallow <- rpart(Price ~  Age_08_04 + KM + Fuel_Type + 
+              HP + Automatic + Doors + Quarterly_Tax + 
+              Mfr_Guarantee + Guarantee_Period + Airco + 
+              Automatic_airco + CD_Player + Powered_Windows + 
+              Sport_Model + Tow_Bar, data = train_data)
+           
+prp(tr_shallow, box.palette = "Purples")
+
+```
+
+```{r}
+accuracy(predict(tr_shallow, train_data), train_data$Price)
+
+accuracy(predict(tr_shallow, valid_data), valid_data$Price)
+
+```
+
+As expected, compared to the full tree, our pruned tree performs worse on the training set (RMSE=1343 compared to 993 for the full tree). The validation set also performed worse better(RMSE=1441 compared to 1319), but the pruned validation set performed better than the pruned training set. This indicates that we have underfit our model.
+
+**b. Let us see the effect of turning the price variable into a categorical variable. First, create a new variable that categorizes price into 20 bins. Now repartition the data keeping Binned_Price instead of Price. Run a classification tree with the same set of input variables as in the RT, and with Binned_Price as the output variable. Keep the minimum number of records in a terminal node to 1.**
+
+```{r}
+bins <- seq(min(car_data$Price), 
+            max(car_data$Price),
+            (max(car_data$Price) - min(car_data$Price))/20)
+bins
+
+
+Binned_Price <- .bincode(car_data$Price, 
+                         bins, 
+                         include.lowest = TRUE)
+
+Binned_Price <- as.factor(Binned_Price)
+Binned_Price
+
+
+train_data$Binned_Price <- Binned_Price[train_index]
+valid_data$Binned_Price <- Binned_Price[-train_index]
+
+```
+
+
+**i. Compare the tree generated by the CT with the one generated by the RT. Are they different? (Look at structure, the top predictors, size of tree, etc.) Why?**
+
+
+```{r}
+tr.binned <- rpart(Binned_Price ~  Age_08_04 + KM + Fuel_Type + 
+                      HP + Automatic + Doors + Quarterly_Tax + 
+                      Mfr_Guarantee + Guarantee_Period + Airco + 
+                      Automatic_airco + CD_Player + Powered_Windows + 
+                      Sport_Model + Tow_Bar, data = train_data)
+prp(tr.binned)
+
+t(t(tr.binned$variable.importance))
+```
+
+When creating bins the intent is to decrease the number of variables. This unsurpisingly results in the binned tree being significantly smaller than the original full tree. One interesting thing to note is the in our binned tree, CD Player replaces Quarterly Tax as one of the top four specifications in indicating price. This could be because tax variations are less significant within bins.
+
+**ii. Predict the price, using the RT and the CT, of a used Toyota Corolla with the specifications listed in Table 9.1.**
+
+
+```{r}
+new_record <- data.frame(Age_08_04 = 77, 
+                         KM = 117000, 
+                         Fuel_Type = "Petrol", 
+                         HP = 110, 
+                         Automatic = 0, 
+                         Doors = 5, 
+                         Quarterly_Tax = 100, 
+                         Mfr_Guarantee = 0, 
+                         Guarantee_Period = 3, 
+                         Airco = 1, 
+                         Automatic_airco = 0, 
+                         CD_Player = 0, 
+                         Powered_Windows = 0, 
+                         Sport_Model = 0, 
+                         Tow_Bar = 1)
+
+price_tr <- predict(tr, newdata = new_record)
+
+price_tr_bin <- bins[predict(tr.binned, newdata = new_record, type = "class")]
+
+cat(paste("Regression Price Estimate: ",scales::dollar(price_tr,0.01)), 
+      paste("Classification Price Estimate: ",scales::dollar(price_tr_bin,0.01)),
+      sep='\n')
+
+
+```
+
+**iii. Compare the predictions in terms of the predictors that were used, the magnitude of the difference between the two predictions, and the advantages and disadvantages of the two methods.**
+
+
+Our predictions for the two models were very similar. A difference of $32.78 (less than 1% of the total price of the car) is statistically insignificant in this case. 
+Our binned model returned a whole number while the full model returned a more “accurate” price, but ultimately it can't be meaningfully differentiated in terms of value. Both models had comparable accuracy, but the full regression seemed to be better trained. If we wanted to use the binned model, it would be suggested by creating smaller bin ranges to prevent underfitting the model. However, when considering the overall accuracy range and the car sale market both models would be considered good enough for most used car sales markets.
+
+## Problem 10.1
+
+### Financial Condition of Banks
+
+```{r}
+# read data
+bank_df <- read.csv("./Banks.csv")
+bank_df$Financial.Condition <- as.factor(bank_df$Financial.Condition)
+bank_df
+```
+
+```{r}
+# logistic regression
+logreg <- glm(Financial.Condition ~ TotLns.Lses.Assets + TotExp.Assets, 
+              data = bank_df, family = "binomial")
+summary(logreg)
+```
+
+**a. Write the estimated equation that associates the financial condition of a bank with its two predictors in three formats:**
+
+##### i. The logit as a function of the predictors: 
+<p>
+Logit(Financial.Condition = 1) = -14.721 + 8.371(TotLns.Lses.Assets) + 89.834(TotExp.Assets)
+<p/>
+
+##### ii. The odds as a function of the predictors:
+<p>
+Odds(Financial/Condition = 1) = e^(-14.721 + 8.371(TotLns.Lses.Assets) + 89.834(TotExp.Assets))
+<p/>
+
+##### iii. The probability as a function of the predictors
+<p>
+Probability(Financial/Condition = 1) = 1/(1 + e^(-14.721 + 8.371(TotLns.Lses.Assets) + 89.834(TotExp.Assets)))
+<p/>
+
+**b. Consider a new bank whose total loans and leases/assets ratio = 0.6 and total expenses/assets ratio = 0.11. From your logistic regression model, estimate the following four quantities for this bank (use R to do all the intermediate calcula- tions; show your final answers to four decimal places): the logit, the odds, the probability of being financially weak, and the classification of the bank (use cutoff = 0.5).**
+
+```{r}
+# a new bank with TotLns.Lses.Assets = 0.6 & TotExp.Assets = 0.11
+logit_new <- -14.721 + (8.371 * 0.6) + (89.834 * 0.11)
+round(logit_new, 4)
+```
+
+```{r}
+odds_new <- exp(logit_new)
+round(odds_new, 4)
+```
+
+```{r}
+prob_new <- 1/(1+odds_new)
+prob_new
+
+```
+
+```{r}
+new_df <- data.frame(TotLns.Lses.Assets = 0.6, TotExp.Assets = 0.11)
+pred <- predict(logreg, new_df)
+
+#cutoff = 0.5
+if (pred > 0.5){
+  print("Weak")
+}else
+  print("Strong/Not Weak")
+```
+
+**c. The cutoff value of 0.5 is used in conjunction with the probability of being financially weak. Compute the threshold that should be used if we want to make a classification based on the odds of being financially weak, and the threshold for the corresponding logit.**
+
+<p> 
+The cutoff value probability = 1/(1 + odds) = 1/2, odds = exp(logit) = 1, and logit = ln(1) = 0.
+<p/>
+
+**d. Interpret the estimated coefficient for the total loans & leases to total assets ratio (TotLns&Lses/Assets) in terms of the odds of being financially weak.**
+
+<p>
+Interpretation: the estimated coefficient for TotLns.Lses.Asset (Total loans & leases to total assets ratio) is 8.371 from the summary above, which is a positive number. When all other predictors stay constant, increase in TotLns.Lses.Asset, the odds of being financially weak will increase by ratio of exp(8.371).
+<p/>
+
+**e. When a bank that is in poor financial condition is misclassified as financially strong, the misclassification cost is much higher than when a financially strong bank is misclassified as weak. To minimize the expected cost of misclassification, should the cutoff value for classification (which is currently at 0.5) be increased or decreased?**
+
+<p>
+The poor misclassified as strong is more expensive, therefore we would "decrease" the cutoff, for example to 0.4, to increase the number of weak being classified. Decrease the cutoff will result larger range of classified as weak and smaller range of classified as strong.
+<p/>
+
+
+
+## Problem 10.2
+
+### Identifying Good System Administrators
+
+```{r, message=FALSE}
+#upload the data
+library(readr)
+system<- read_csv("./SystemAdministrators.csv")
+names(system)[names(system) == "Completed task"] <- "CompletedTask"
+
+#encode the response variable into a factor variable of 1 and 0
+system$CompletedTask <- ifelse(system$CompletedTask == "Yes", 1, 0)
+system$CompletedTask <- as.factor(system$CompletedTask)
+str(system)
+
+```
+
+```{r}
+#a create a scatter plot of Experience vs. Training 
+ggplot(system, aes(Experience,Training, color= CompletedTask,size=CompletedTask,shape=CompletedTask)) + geom_point()+ggtitle("Scatter Plot of Experience vs.Training")
+
+```
+<p>
+
+**a.Which predictor(s) appear(s) potentially useful for classifying task completion?**
+
+Experience is more useful for classifying task completion, because there are more completed task(1) when the unit of experience increases.There is no clear interpretation with training. As the unit of training increases we dont clearly see more completed tasks.
+
+</p>
+```{r}
+set.seed(111)
+#b
+logmodel <- glm(CompletedTask ~.,family=binomial(link="logit"), data=system)
+summary(logmodel)
+
+library(caret)
+#predict the posibility
+logpred <- predict(logmodel, newdata = system, type = "response") 
+
+#get the confusion matrix
+lg1 <-table(system$CompletedTask, logpred > 0.5)
+lg1
+
+#what is the percentage of programmers incorrectly classified as failing to complete the task?
+a <- round(5/(5+10)*100,2)
+paste("the percentage",a,"%")
+```
+<p>
+**c.To decrease the percentage in part (b), should the cutoff probability be increased or decreased?**
+
+The cutoff probability should be decreased. if we decreased the probability into 0.2, the percentage in part(b) will decrease to 13.3%
+</p>
+```{r}
+#d
+p <- 0.5
+Training <- 4
+#Formula for odds= p/(1-p)
+#Formula used(eq.10.6): log(p/(1-p))= β0 + β1*x1 + … + βk*xk
+
+LHS<- log(p/(1-p))
+coef(logmodel)
+
+#get parameters
+a <-(coef(logmodel)[1])
+b <-(coef(logmodel)[2])
+c <-(coef(logmodel)[3])
+
+Valueforexperience<- ((LHS-a-(c*4))/b)
+Valueforexperience
+
+```
+<p>
+
+**d.How much experience must be accumulated by a programmer with 4 years of training before his or her estimated probability of completing the task exceeds 0.5?**
+
+As you can see the output, the value for experience is about 9.10 that must be accumulated by a programmer with 4 years of training before his or her estimated probability of completing the task exceeds 0.5.
+<p>
+
+
+## Problem 10.3
+
+### Competitive Auctions on eBay.com.
+
+Create dummy variables for the categorical predictors. These include Category (18 categories), Currency (USD, GBP, Euro), EndDay (Monday–Sunday), and Duration (1, 3, 5, 7, or 10 days).
+
+```{r, message=FALSE}
+library(tidyverse)
+df2 <- read_csv(file="eBayAuctions.csv")
+```
+
+<p>
+**a.Create pivot tables for the mean of the binary outcome (Competitive?) as a function of the various categorical variables (use the original variables, not the dummies). Use the information in the tables to reduce the number of dummies that will be used in the model. For example, categories that appear most similar with respect to the distribution of competitive auctions could be combined.**
+
+</p>
+```{r, message=FALSE}
+library(rpivotTable) 
+#"Category and Average Competitive
+rpivotTable(df2, cols=c("Category"),vals = "Competitive?", aggregatorName = "Average", width="100%", height="400px")
+```
+<br>
+
+Category values ranges from 0.17 to 0.85, so we will split to 0.15-0.40, 0.40-0.65, 0.65-0.90
+```{r}
+df2$Category_lower <- df2$Category %in% c("Health/Beauty","EverythingElse","Coins/Stamps","Pottery/Glass","Automotive","Jewelry")
+df2$Category_mid <- df2$Category %in% c("Books","Clothing/Accessories","Toys/Hobbies","Antique/Art/Craft","Collectibles","Music/Movie/Game")
+df2$Category_upper <- df2$Category %in% c("Home/Garden","Business/Industrial","Computer","SportingGoods","Electronics","Photography")
+```
+
+
+```{r}
+library(rpivotTable) 
+#"Category and Average Currency
+rpivotTable(df2, cols=c("currency"),vals = "Competitive?", aggregatorName = "Average", width="100%", height="400px")
+```
+<br>
+
+Each currency seems unique, tropping will not be done.
+
+```{r}
+library(rpivotTable) 
+#"Category and Average endDay
+rpivotTable(df2, cols=c("endDay"),vals = "Competitive?", aggregatorName = "Average", width="100%", height="400px")
+```
+<br>
+
+Grouping 0.47 - 0.49 which are ("Fri", "Sun", "Wed")
+
+```{r}
+df2$endDay_Wed_Fri_Sun <- df2$endDay %in% c("Fri", "Sun", "Wed")
+```
+
+```{r}
+library(rpivotTable) 
+#"Category and Average Duration
+rpivotTable(df2, cols=c("Duration"),vals = "Competitive?", aggregatorName = "Average", width="100%", height="400px")
+```
+<br>
+
+Separate Duration = 5 from others as its value is distrinct.
+
+```{r}
+df2$Duration_5 <- df2$Duration %in% "5"
+```
+
+```{r}
+df3 <- df2[, c(2,3,6,7,8:13)]
+```
+
+
+```{r}
+library(caret)
+#Convert characters to binary factors
+dmy <- dummyVars(" ~ .", data = df3[c(1, 6:10)])
+trsf <- data.frame(predict(dmy, newdata = df3))
+df3 <- data.frame(c(df3,trsf))
+df3 <- df3[, c(2:5,11:23)]
+```
+
+
+```{r}
+names(df3)[names(df3) == "Competitive."] <- "Competitive?"
+df3$`Competitive?` <- as.factor(df3$`Competitive?`)
+```
+<p>
+**b.Split the data into training (60%) and validation (40%) datasets. Run a logistic model with all predictors with a cutoff of 0.5.**
+</p>
+```{r}
+set.seed(111)
+#Generate a random number that is 60% of the total number of rows in dataset.
+train.index <- sample(row.names(df3), 0.6*dim(df3)[1])  
+valid.index <- setdiff(row.names(df3), train.index)  
+train.df <- df3[train.index,]
+valid.df <- df3[valid.index,]
+```
+
+```{r}
+#The default cutoff prediction probability score is 0.5 
+lm.fit <- glm(`Competitive?` ~ ., data = train.df, family = binomial(link="logit"))
+summary(lm.fit)
+# evaluate
+pred <- predict(lm.fit, valid.df, type = "response") 
+library(caret)
+confusionMatrix(factor(ifelse(pred > 0.5, 1, 0)) ,valid.df$`Competitive?`)
+#accuracy=0.7427
+```
+<p>
+**c.If we want to predict at the start of an auction whether it will be competitive, we cannot use the information on the closing price. Run a logistic model with all predictors as above, excluding price. How does this model compare to the full model with respect to predictive accuracy?**
+</p>
+
+```{r}
+#get the datasets without the close price
+train01 <- train.df
+test01 <- valid.df
+train01$ClosePrice <- NULL
+test01$ClosePrice <- NULL
+  
+lm.fit2 <- glm(`Competitive?` ~ ., data = train01, family = binomial(link="logit"))
+summary(lm.fit2)
+# evaluate
+pred2 <- predict(lm.fit2, test01,type="response") 
+library(caret)
+confusionMatrix(factor(ifelse(pred2 > 0.5, 1, 0)) ,test01$`Competitive?`)
+#accuracy=0.6324
+```
+<br>
+
+##### Interpretation
+<p>
+The first model with close price is more accurate with Accuracy : 0.7427  versus the one without close price, Accuracy : 0.6324.
+
+**d. Interpret the meaning of the coefficient for closing price. Does closing price have a practical significance? Is it statistically significant for predicting competitiveness of auctions? (Use a 10% significance level.)**
+ClosePrice has coefficient of 7.495e-02 with p-value of less than 2e-16. Use a 10% significance level, ClosePrice is still considered very statistically significant for predicting the competitiveness of auctions.
+However, ClosePrice is not practically significant as we cannot use the information on the closing price to predict the competitiveness of auctions in reality.
+
+**e.Use stepwise selection (use function step() in the stats package or function stepAIC() in the MASS package) and an exhaustive search (use function glmulti() in package glmulti) to find the model with the best fit to the training data. Which predictors are used?**
+
+</p>
+
+```{r, message=FALSE}
+library(MASS)
+# Stepwise regression model
+step.model1 <- stepAIC(lm.fit2, direction = "both",trace = FALSE)
+summary(step.model1) #return to the best final model
+step.model1$anova
+
+```
+
+<br>
+
+##### Interpretation
+<p>
+The model with the best fit to the training data has the following predictors:
+sellerRating + currency.GBP + Category_lowerFALSE + Category_midFALSE + endDay_Wed_Fri_SunFALSE + Duration_5FALSE
+
+Exhaustive search using function glmulti() was unsuccesfully run. - R memmory exhausted.
+
+**f.Use stepwise selection and an exhaustive search to find the model with the lowest predictive error rate (use the validation data). Which predictors are used?**
+</p>
+
+```{r}
+# stepwise selection
+fit_1 <- glm(`Competitive?` ~ ., family=binomial(link="logit"), data=train01)
+step <-stepAIC(fit_1, trace=FALSE,direction = "backward")
+step$anova
+#summary(step)
+
+#model
+logmodel01 <- glm(`Competitive?` ~ sellerRating + currencyGBP + Category_lowerFALSE + 
+    Category_midFALSE + endDay_Wed_Fri_SunFALSE + Duration_5FALSE, data = train01, family = binomial(link="logit"))
+summary(logmodel01)
+# evaluate
+pred01 <- predict(logmodel01, test01,type="response") 
+library(caret)
+confusionMatrix(factor(ifelse(pred01 > 0.5, 1, 0)) ,test01$`Competitive?`)
+#accuracy=0.6147
+```
+
+```{r}
+fit_2 <- glm(`Competitive?` ~ ., family=binomial(link="logit"), data=train01)
+step <-stepAIC(fit_2, trace=FALSE,direction = "forward")
+step$anova
+summary(step)
+
+#model
+logmodel02<- glm(`Competitive?` ~ sellerRating + OpenPrice + currencyEUR + currencyGBP + 
+    currencyUS + Category_lowerFALSE + Category_lowerTRUE + 
+    Category_midFALSE + Category_midTRUE + Category_upperFALSE + 
+    Category_upperTRUE + endDay_Wed_Fri_SunFALSE + endDay_Wed_Fri_SunTRUE + 
+    Duration_5FALSE + Duration_5TRUE,data = train01, family = binomial(link="logit"))
+summary(logmodel02)
+# evaluate
+pred02 <- predict(logmodel02, test01,type="response") 
+library(caret)
+confusionMatrix(factor(ifelse(pred02 > 0.5, 1, 0)) ,test01$`Competitive?`)
+#accuracy=0.6324
+```
+
+##### Interpretation
+<p>
+After the stepwise forward selection, the best predictive model with predictors: ssellerRating + OpenPrice + currency.EUR + currency.GBP + 
+    currency.US + Category_lowerFALSE + Category_lowerTRUE + Category_midFALSE + Category_midTRUE + Category_upperFALSE + 
+    Category_upperTRUE + endDay_Wed_Fri_SunFALSE + endDay_Wed_Fri_SunTRUE + Duration_5FALSE + Duration_5TRUE
+And the accuracy is 0.6324
+
+
+**g.What is the danger of using the best predictive model that you found?**
+
+The danger is that the accuracy of this best predictive model is only 63.24%, therefore, we need to use it carafully when we predict the auction is competitive or not.
+
+
+**h.Explain why the best-fitting model and the best predictive models are the same or different.**
+Two models are different because that their purposes are different. The aim of the best-fitting model is to fit the training dataset well, and the aim of the best predictive model is to minimize the prediction error.Additionally,best-fitting model might fit the training data too well feature selection focuses on how statistically significant the variables are and  variables with high p-values are getting removed.On the other hand best predictive model uses new data to evaluate the performance of the model and pick the best-performing model that has the higher accuracy.
+
+
+**i. If the major objective is accurate classification, what cutoff value should be used?**
+</p>
+
+
+```{r, message=FALSE}
+#The InformationValue::optimalCutoff function provides ways to find the optimal cutoff to improve the prediction
+library(InformationValue)
+predicted <- predict(logmodel02, test01,  type="response")  
+optimalCutoff(test01$`Competitive?`, predicted)[1] 
+```
+<br>
+
+##### Interpretation
+<p>
+0.503 is the computed optimal cutoff that minimizes the misclassification error and improve the prediction model(the best predictive model).
+
+**j. Based on these data, what auction settings set by the seller (duration, opening price, ending day, currency) would you recommend as being most likely to lead to a competitive auction?**
+The best fit model: sellerRating + currency.GBP + Category_lowerFALSE + Category_midFALSE + endDay_Wed_Fri_SunFALSE + Duration_5FALSE
+
+According to the earlier pivots tables of the mean of the binary outcome (Competitive?), we can conclude that Ebay sellers can attempt to gain competitive auctions by: 
+Selling items in these category: "Home/Garden","Business/Industrial","Computer","SportingGoods","Electronics","Photography"
+
+End auction on Monday or Tuesday
+
+Having aution duration of 4 days,except 5
+
+</p>

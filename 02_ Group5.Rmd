@@ -1,0 +1,1104 @@
+---
+title: "IE7275 HW2 Group 5"
+author: "Group 5"
+date: "3/14/2020"
+output:
+  html_document:
+    df_print: paged
+    fig_height: 7
+    fig_width: 10
+    highlight: tango
+    theme: readable
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br>
+
+### Problem 1: Concrete Slump Test Data 
+
+<br>
+
+#### Create a scatterplot matrix of “Concrete Slump Test Data” and select an initial set of predictor variables
+  
+  - Predictors Cement, Slag, Fly Ash, Water, SP, Coarse Aggregate and Fine Aggregate
+  
+  - Response vars: Slump, Slump Flow and 28-day Compressive Strength
+
+```{r, message=FALSE}
+#create the scatterplot matrix
+library(readxl)
+library(forecast)
+library(tidyverse)
+library(caret)
+library(rpart)
+library(caret)
+library(e1071)
+library(data.table)
+
+Concrete_Slump_Test<- read_excel("Concrete Slump Test Data.xlsx")
+
+## Remove spaces from column names
+Concrete<- setnames(x = Concrete_Slump_Test, old = names(Concrete_Slump_Test),
+         new = gsub(" ", "", names(Concrete_Slump_Test)))
+
+library(psych)
+pairs.panels(Concrete, 
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB",
+             density = TRUE,  # show density plots
+             ellipses = TRUE # show correlation ellipses
+             )
+```
+<br>
+
+##### Interpretation
+<p> The correlation coefficient provides information on the effect level and direction of the linear relationship between two variables. The Pearson correlation is used when the dataset has a normal distribution. According to the correlation results of the dataset, Slump and Slump Flow are highy correlated. Slump Flow, as a response variable is also moderately correlated with the predictors water (0.63) as well as Coarse Aggregate and Slag (both with -0.33). Slump Flow will be used as response variable.
+</p>
+
+<br>
+
+
+```{r, message=FALSE}
+library(readxl)
+library(corrplot)
+#correlate all predictors
+matrix <- as.matrix(Concrete[ , c(2:8)])
+corrplot(cor(matrix), is.corr = FALSE, method = "circle", type = "upper")
+```
+
+<br>
+
+##### Interpretation
+<p> The calucalted correlation coefficients (R) of all predictor variables are shown on the graph. Positive correlations are displayed in blue and negative correlations in red color. Color intensity and the size of the circle are proportional to the correlation coefficients. In the right side of the correlogram, the legend color shows the correlation coefficients and the corresponding colors.The R value of approximately zero indicates that the points have no direction. 
+</p>
+
+<br>
+
+#### Build a few potential regression models using “Concrete Slump Test Data”
+
+<br>
+
+**Multiple Linear Regression**
+
+```{r}
+#ML:predictive analysis
+#multiple regression model 
+
+#set the training and testing dataset p=0.7
+#seprate the outcome from the predictor varaibles
+# Set seed for reproducibility
+set.seed(1000)
+Concrete_slumpflow <- Concrete$SlumpFlow
+
+idx <- createDataPartition(Concrete_slumpflow, p = 0.7, list = FALSE)
+
+train_set <- Concrete[idx, ]
+train_outcome <- Concrete_slumpflow[idx]
+
+test_set <- Concrete[-idx, ]
+test_outcome <- Concrete_slumpflow[-idx]
+
+
+#slump flow is the response variables
+#Cement + Slag + `Fly Ash` + Water + SP + `Coarse Aggregate` + `Fine Aggregate`) are the initial set of predictor variables
+
+regressorlm <- lm(SlumpFlow ~ Cement + Slag + FlyAsh + Water + SP + CoarseAggregate + FineAggregate,data =train_set)
+summary(regressorlm)
+summary(regressorlm)$coefficient
+
+
+#make the prediction
+predicted_slump1 <- predict(regressorlm, newdata = test_set)
+residuls1 <- test_set$SlumpFlow[1:24]-predicted_slump1[1:24]
+d1 <- data.frame("Predicted"= predicted_slump1[1:24], "Actual"=test_set$SlumpFlow[1:24], "Residul"= residuls1)
+#randomly samples 5 rows from the dataframe to display
+library(knitr)
+kable(sample_n(d1, 5))
+accuracy(predicted_slump1,test_set$SlumpFlow)
+```
+
+<br>
+
+##### Interpretation
+<p> Multiple linear regression is an extension of simple linear regression used to predict an outcome variable (y) on the basis of multiple distinct predictor variables (x).
+With three predictor variables (x), the prediction of y is expressed by the following equation:
+  
+  Slump Flow = -512.306 + (0.148)Cement + (0.118)Slag + (0.149)FlyAsh + (0.936)Water + (-0.152)SP + (0.183)CoarseAggregate +   (0.205)FineAggregate
+
+It can be seen that p-value of the F-statistic is 0.00000000089, which is highly significant. This means that, at least, one of the predictor variables is significantly related to the response variable. This is likely the Water variable. 
+For a given the predictor, the t-statistic evaluates whether or not there is significant association between the predictor and the outcome variable. It can be seen that, changes in Water input are significantly associated to the change in slump flow while changes in slag input are not significantly associated with slump flow.
+
+The overall quality of the model can be assessed by examining the R-squared (R2). R2 represents the proportion of variance in the response variable, slump flow, that may be predicted by knowing the value of the predictor variables. 
+In the above model, the adjusted R2 = 0.555, meaning that 55.5% of the variance in the measure of slump folw can be predicted by the 7 predictor inputs. In addition, the RMSE for the model is 15.
+</p>
+
+<br>
+
+
+**Support Vector Regression (SVR)**
+
+```{r}
+#SVM
+library(e1071)
+svr_regressor <- svm(SlumpFlow ~ Cement + Slag + FlyAsh + Water + SP + CoarseAggregate + FineAggregate,data =train_set, type = 'eps-regression')
+
+#make the prediction
+predicted_slump2 <- predict(svr_regressor, newdata = test_set)
+
+residuls2 <- test_set$SlumpFlow[1:24]-predicted_slump2[1:24]
+d2 <- data.frame("Predicted"= predicted_slump2[1:24], "Actual"=test_set$SlumpFlow[1:24], "Residul"= residuls2)
+#randomly samples 5 rows from the dataframe to display
+library(knitr)
+kable(sample_n(d2, 5))
+accuracy(predicted_slump2,test_set$SlumpFlow)
+```
+
+<br>
+
+##### Interpretation
+<p> 
+Support Vector Regression (SVR) uses the same basic idea as Support Vector Machine (SVM) which is a classification method that separates data using hyperplanes such that the data space is divided into segments and each segment contains only one kind of data. However, classification model will be fitted only when type of y variable is a factor. As the slump flow, a y variable in this model, is not a labled factor, SVR will be using SVM as a regression analysis predicting real values rather than a class. SVR acknowledges the presence of non-linearity in the data and provides a proficient prediction model. 
+
+From the above results, it can be observed that the RMSE for the linear model,15, is larger than the RMSE of the above SVR model, 14.1 This incicates that the implementation of SVR has an accuracy higher than the linear regression model. Therefore, we can conclude that SVR is superior to the linear model as a prediction method. This is because the linear model cannot capture the nonlinearity in a dataset and SVR is the best fit in this Concrete Slump Test Data, an evidently nonlinear dataset.
+</p>
+
+<br>
+
+
+**Random Forest (RF)**
+
+```{r, message=FALSE}
+#RF
+library(randomForest)
+library(data.table)
+
+regressorRF <- randomForest(SlumpFlow ~ Cement + Slag + FlyAsh + Water + SP + CoarseAggregate + FineAggregate, data=train_set)
+
+plot(regressorRF,  main="Error Plot")
+summary(regressorRF)
+print(regressorRF)
+
+## to look at variable importance
+varImpPlot(regressorRF,  main="Importance of Each Predictor Variable")
+```
+
+```{r}
+#make the prediction
+predicted_slump3 <- predict(regressorRF, newdata = test_set,type="response")
+
+residuls3 <- test_set$SlumpFlow[1:24]-predicted_slump3[1:24]
+d3 <- data.frame("Predicted"= predicted_slump3[1:24], "Actual"=test_set$SlumpFlow[1:24], "Residul"= residuls3)
+#randomly samples 5 rows from the dataframe to display
+library(knitr)
+kable(sample_n(d3, 5))
+accuracy(predicted_slump3,test_set$SlumpFlow)
+```
+
+<br>
+
+##### Interpretation
+<p> 
+Random forest is a way of averaging multiple deep decision trees, trained on different parts of the same training set, with the goal of overcoming over-fitting problem of individual decision tree. In the other word, random forest provides a way to remove the weaknesses of one decision tree by averaging the results of many. Although most widely used for classification, RF can also be used for regression model with continuous response variable.
+The function, randomForest was used to train a forest of B=500 trees. The forest is to predict the median value of slump flow based on the input predictor variables. The resulted variance is moderate at around 44%. 
+
+The error plot shows that the error decreases as the number of tree increases. 
+
+In the Importance of Each Predictor Variable graph, the higher the IncNodePurity of a predictor variable, the more important the variable is. As seen in the plot, water is most important while FLyAsh is the least important. It can also be observed that the RMSE for the above random forest is 14.8, which is larger than the SVR's RMSE of 14.1, but smaller than the linear model's RMSE of 15.
+</p>
+
+<br>
+
+
+**Select the best ML regression model**
+<br>
+```{r}
+#comapre the Machine Learning models
+postResample(pred=predicted_slump1[1:24],obs=test_set$SlumpFlow[1:24])
+postResample(pred=predicted_slump2[1:24],obs=test_set$SlumpFlow[1:24])
+postResample(pred=predicted_slump3[1:24],obs=test_set$SlumpFlow[1:24])
+```
+
+<br>
+
+##### Interpretation
+<p> 
+In summary, SVR did the best in prediction with smaller RMSE and larger R^2 when 70% of the dataset is used in training.
+However, the multiple regression model did the best in prediction when 80% of the dataset is used in training.
+The assumption is that the more data being hold-out for later testing, the better the performance estimation.
+In order to avoid bias, significant amount of data is needed for testing/evaluation of the model.
+</p>
+
+<br>
+
+
+#### Perform regression diagnostics using both typical approach and enhanced approach
+
+```{r}
+library("readxl")
+df <- read_excel("Concrete Slump Test Data.xlsx")
+```
+
+```{r}
+fit1 <- lm(`Slump Flow` ~ Cement + Slag + `Fly Ash` + Water + SP + `Coarse Aggregate` + `Fine Aggregate`, data = df)
+```
+
+
+<br>
+
+**Regression diagnostics**
+```{r}
+# A typical approach
+par(mfrow=c(2,2))
+plot(fit1)
+```
+
+<br>
+
+##### Interpretation
+<p> In the residual-fitted plot, the residuals bounce randomly around the 0 line, therefore the assumption that the relationship is linear is reasonable.
+
+In the Normall Q-Q plot, the points are mostly on the 45-degree line depicting its normality.
+
+In the Scale-Location plot, the points are randomly spread around a horizontal line, hence its homoscedasticity.
+
+In the Residuals-vs-Leverage plot, it can be observe that there are three points labeled, 8, 14 and 69, they are outliers that may be removed.
+</p>
+
+
+<br>
+
+**An enhanced approach**
+```{r, message=FALSE}
+#NORMALITY
+library(car)
+qqPlot(fit1, labels=row.names(df), id.method="identify", simulate=TRUE, main="Q-Q Plot")
+```
+
+<br>
+
+##### Interpretation
+<p> All the points fall close to the line and are within the confidence envelope suggesting that the model meets the normality assumption moderately well.
+</p>
+
+
+<br>
+
+```{r}
+#INDEPENDENCE OF ERRORS
+durbinWatsonTest(fit1)
+```
+
+<br>
+
+##### Interpretation
+<p> The nonsignificant p-value shows a lack of autocorrelation, and conversely an independence of errors. The lag value (lag=1) means each observation is being compared against the one next to it in the dataset.
+</p>
+
+
+<br>
+
+```{r}
+#LINEARITY
+library(car)
+crPlots(fit1,ylab="Comp+Res(SumpFlow)", cex.lab=0.7)
+```
+
+<br>
+
+##### Interpretation
+<p> The Component+Residual Plots is used to observe any nonlinearity relationship between the independent variables (predictors) and the dependent variable, slumpflow. Systematic departure from each plot shows linearity. From the plots above, linearity assumption can be confirmed.
+</p>
+
+<br>
+
+```{r}
+#HOMOSCEDASTICITY
+library(car)
+ncvTest(fit1)
+spreadLevelPlot(fit1, main ="The Spread-level Plot for Constant Error Variance")
+```
+
+<br>
+
+##### Interpretation
+<p> The Spread-level plot is for assessing constant error variance. The score test of p=0.63 is nonsignificant, suggesting that the constant variance assupmtion has been met. The suggested power transformation is 1.74 which confirms that transformation is not needed.
+</p>
+
+<br>
+
+```{r}
+# Multicollinearity
+library(car)
+vif(fit1)
+sqrt(vif(fit1)) >2
+```
+
+<br>
+
+#### Interpretation
+<p> As seen in the result above, by using a statistic called the variance inflation factor(VIF), there may be multicoliinearity problem.
+</p>
+
+<br>
+
+**Comparing what were manually calculated to the Global Test of Model Assumptions**
+```{r}
+#install.packages("gvlma")
+library(gvlma)
+gvmodel <- gvlma(fit1)
+summary(gvmodel)
+```
+
+<br>
+
+
+#### Identify unusual observations and take corrective measures
+
+```{r}
+#outliers
+library(car)
+outlierTest(fit1)
+```
+
+<br>
+
+<p> The outlier test shows No 69 is the outlier.
+</p>
+```{r}
+#high leverage points
+hat.plot <- function(fit1) {
+  p <- length(coefficients(fit1))
+  n <- length(fitted(fit1))
+  plot(hatvalues(fit1), main = "Index Plot of Hat Values")
+  abline(h=c(2,3)*p/n, col="red", lty=2)
+  identify(1:n, hatvalues(fit1), names(hatvalues(fit1)))
+}
+hat.plot(fit1)
+```
+
+<br>
+
+##### Interpretation
+<p> The three points are above the red line suggest the presence of outliers.
+</p>
+
+<br>
+
+```{r}
+#influential observations
+cutoff <- 4/(nrow(df)-length(fit1$coefficients)-2)
+plot(fit1, which=4, cook.levels=cutoff)
+abline(h=cutoff, hty=2, col="red")
+```
+
+<br>
+
+##### Interpretation
+<p> According to Cook's distance, No 8, 14 and 69 are outliers.
+</p>
+
+<br>
+
+```{r, warning=FALSE}
+avPlots(fit1, ask=FALSE, onepage=TRUE, id.method="identify")
+influencePlot(fit1, id.method="identify", main="Influence Plot",
+              sub="Circle size is proportional to Cook's distance")
+```
+
+<br>
+
+##### Interpretation
+<p> According to the influence plot, 8, 41 and 69 are outliers; 83 and 88 are possible influential observations.
+</p>
+
+<br>
+
+
+
+#### Corrective measures
+<p>
+**Deleting Observations**
+
+Outliers are observations that are poorly fit by the regression model. If outliers are determined influential, they can be removed to avoid serious distortions in the regression calculations. This model only has 3 outliers, so they are likely not significantly influencial to the learning of the model.
+
+**Adding or deleting variables**
+
+Depending on the current number of predictor variables and their contributions to the model, the adding or removing variables can increase or decrease the accuracy. If the model is currently underfit, then introducing the right variable will increase the accuracy. On the other hand, if the current model has the perfect number of features, introducing new variable will lead to an over-fitting condition, resulting in the decrease in accuracy. 
+
+In the "Fine tune the selection of predictor variables" section (later part of this document), it will be shown that the chosen linear regression model is over-fitted with 7 predictors. Improvement could be made to increase acuracy by reducing the number of the predictors to 5.
+
+**Using another regression approach**
+
+Support Vector Regression (SVR) which acknowledges the presence of non-linearity in the data and provides a proficient prediction model was used ealier in addition to the linear model to form the prodictive model. From the predicted results, it was observed that the RMSE for the linear model,15, was larger than the RMSE of the above SVR model, 14.1 This incicates that the implementation of SVR has an accuracy higher than the linear regression model. Again, this is because the linear model cannot capture the nonlinearity in a dataset and SVR is the best fit in this Concrete Slump Test Data, an evidently nonlinear dataset.
+</p>
+
+<br>
+
+
+```{r}
+# Transforming Variables
+library(car)
+summary(powerTransform(df$`Slump Flow`))
+```
+
+<br>
+
+##### Interpretation
+<p> From the results above, there is no transformation needed in this case.
+</p>
+
+<br>
+
+
+#### Fine tune the selection of predictor variables
+
+<br>
+
+**Stepwise Regression - Backward Selection**
+
+```{r, message=FALSE}
+#comparing models
+#variable selection- Stepwise Regression
+library(MASS)
+fit_1 <- lm(`Slump Flow` ~ Cement + Slag + `Fly Ash` + Water + SP + `Coarse Aggregate` + `Fine Aggregate`, data = df)
+stepAIC(fit_1, direction="backward")
+```
+
+<br>
+
+##### Interpretation
+<p> The model started with 7 predictors in the model. For each step, the AIC column provides the model AIC resulting from the deletion of the variable listed in that row. In the first step, Slag is removed, decreasing the AIC from 534 to 532. In the second step, SP is removed, decreasing the AIC to 530. Deleting any more variables would increase the AIC, so the reduction process stopped.
+</p>
+
+
+<br>
+
+**Another Approach for Stepwise Regression - Both Direction**
+
+```{r}
+#stat: explanatory model/ best-fit purpose
+#For multiple regression model (lm)
+#Backward stepwise selection to find the most significant Factors 
+
+library(tidyverse)
+library(caret)
+library(leaps)
+library(MASS)
+
+# Set seed for reproducibility
+set.seed(505)
+#fit the full model
+model <- lm (SlumpFlow ~ Cement + Slag + FlyAsh + Water + SP + CoarseAggregate + FineAggregate, data=Concrete)
+
+# Stepwise regression model
+step.model1 <- stepAIC(model, direction = "both", 
+                      trace = FALSE)
+summary(step.model1) #return to the best final model
+accuracy(step.model1)
+
+```
+
+<br>
+
+##### Interpretation
+<p> In this approach, the model also started with 7 predictors and ended with 5 predictors. Note that these 5 predictors are exactly the same with those of Stepwise Regression - Backward Selection.  
+
+Also, note that the coefficients of 5 predictors in both models are mostly identical.
+</p>
+
+<br>
+
+
+**All Subsets Regression**
+
+```{r}
+#variable selection- all subsets regression
+#install.packages("leaps")
+library(leaps)
+leaps <- regsubsets(`Slump Flow` ~ Cement + Slag + `Fly Ash` + Water + SP + `Coarse Aggregate` + `Fine Aggregate`, data = df, nbest=4)
+plot(leaps, scale="adjr2", main = "Adjusted R-square")
+
+```
+
+<br>
+
+##### Interpretation
+<p> It can be observed that a model with the intercept and Fine Aggregate has the adjusted R-square of 0.027. A model with Intercept, Water, and SP has the adjusted R-square of about 0.39. The higher the R-squared, the better the model fits your data. This concludes that if we were to pick between these 2 models, the later one with more predictor variables would be a better fit.
+</p>
+
+<br>
+
+
+
+**Cross-validation**
+
+```{r}
+# use 10-fold cross-validation to estimate the average prediction error (RMSE) of each of the 7 models 
+
+# Set seed for reproducibility
+set.seed(1000)
+# Set up repeated k-fold cross-validation
+#use the 10-fold cross-validation
+train.control<- trainControl(method = "cv", number = 10)
+# Train the model
+step.model2 <- train(SlumpFlow ~ Cement + Slag + FlyAsh + Water + SP + CoarseAggregate + FineAggregate, data =Concrete,
+                    method = "leapSeq", 
+                    tuneGrid = data.frame(nvmax = 1:7),
+                    trControl = train.control
+                    )
+step.model2$results
+ #Fine tune the selection of predictor variables 
+step.model2$bestTune 
+ #therefore, the best prediction model with 5 predictor variables
+
+#get the final model
+summary(step.model2$finalModel)
+
+modelaa <- lm(SlumpFlow ~ Cement +FlyAsh + Water + CoarseAggregate + FineAggregate, data =Concrete)
+summary(modelaa)
+accuracy(modelaa)
+```
+
+<br>
+
+##### Interpretation
+<p> In the 10-fold cross-validation process, the best fitted model contains five variables: Cement + FlyAsh + Water + CoarseAggregate + FineAggregate. This matches with the result from the stepwise selection. The RMSE drops to 12.36
+</p>
+
+<br>
+
+
+#### Interpret the prediction results
+<p> After the fine-tuning processes along with the 10-fold cross-validation, it has been confrimed that the best regression model is:
+  
+  Slump Flow = -249.5087 + (0.0537)Cement + (0.0610)FlyAsh + (0.7231)Water + (0.0729)CoarseAggregate +  (0.0955)FineAggregate
+</p>
+
+<br>
+
+
+
+### Problem 2: Forest Fire Data
+
+<br>
+
+```{r}
+library(ggplot2)
+library(forecast)
+library(readxl)
+library(leaps)
+library(tidyverse)
+mydata <- read_excel("Forest Fires Data.xlsx")
+#head(mydata)
+#summary(mydata)
+```
+
+```{r}
+##Data exploration of the available data-set for forest fires.
+##First, we will plot the histogram for the output/response variable, that is, the Area.
+ggplot(mydata, aes(x=Area)) + 
+        geom_histogram(bins = 20,color="red", fill="steelblue") + 
+        ggtitle('Histogram for Area') + 
+        theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+<br>
+
+##### Interpretation
+<p>
+It can be observed from the above histogram that the
+data distribution for Area is skewed towards 0, so we
+have to apply log tranformation to the data and
+visualise the data.
+</p>
+
+<br>
+
+#### After applying the log transformation to the data distribution of Area variable:
+```{r}
+hist(log1p(mydata$Area), 
+     main = "Histogram for Area",
+     xlab = "Area(log-transformation)", 
+     col = "grey")
+```
+
+<br>
+
+```{r}
+##Now using the boxplot, to show the connection between the forest fire area and the Spatial Variables-X&Y.
+par(mfrow = c(1,1))
+boxplot(mydata$Area ~ as.factor(X), data = mydata, 
+        xlab = "X", ylab = "Forest Fire Area", 
+        main = "Boxplot for forest fire area of X's")
+```
+
+```{r}
+boxplot(mydata$Area ~ as.factor(Y), data = mydata, 
+        xlab = "Y", ylab = "Forest Fire Area", 
+        main = "Boxplot for forest fire area of Y's")
+
+```
+
+<br>
+
+##### Interpretation
+<p>It can be interpreted from the above boxplots that there is no obvious kind of relationship among the Spatial Variables(X&Y) and Forest Fire Area.
+</p>
+
+<br>
+
+```{r}
+ggplot(mydata, aes(x=Month, y=Area)) + 
+        geom_point(color='steelblue', fill='yellow') + 
+        ggtitle('Scatterplot of Forest Fire Area for different months') + 
+        theme(plot.title = element_text(hjust = 0.5)) + 
+        xlab('Months') + ylab('Forest Fire Area')
+```
+
+<br>
+
+##### Interpretation
+<p>It can be observed from the above scatterplot that the observations in each month are unbalanced, and the observations have a higher risk of getting overfitted.
+</p>
+
+<br>
+
+#### Now, we will visualize the dataset to explore the relationship between the days and the forest fire area.
+
+```{r}
+ggplot(mydata, aes(x=Day, y=Area)) + 
+        geom_boxplot(color='blue', fill='red') + 
+        ggtitle('Boxplot of Forest Fire Area for different days') + 
+        theme(plot.title = element_text(hjust = 0.5)) + 
+        xlab('Days') + ylab('Forest Fire Area')
+```
+<br>
+
+##### Interpretation
+<p>It can be interpreted from the above boxplot that Saturday has higher chance of getting the forest fire.
+</p>
+
+<br>
+
+```{r}
+mydata$Month <- as.numeric(as.factor(mydata$Month))
+mydata$Day <- as.numeric(as.factor(mydata$Day))
+mydata$Area<-log1p(mydata$Area)
+glimpse(mydata)
+```
+
+<br>
+
+#### Create a scatterplot matrix of “Forest Fires Data” and select an initial set of predictor variables
+
+```{r}
+pairs(mydata[,5:13], pch = 19,col='blue')
+```
+
+```{r}
+# another way of scatterplot
+library(readxl)
+library(forecast)
+library(tidyverse)
+library(caret)
+library(rpart)
+library(caret)
+library(e1071)
+library(data.table)
+
+#upload the dataset
+Forest_Fires <- read_excel("./Forest Fires Data.xlsx")
+Forest_Fires$Month <- as.numeric(as.factor(Forest_Fires$Month)) 
+Forest_Fires$Day <- as.numeric(as.factor(Forest_Fires$Day))
+
+#get the scatter matrix
+library(psych)
+pairs.panels(Forest_Fires, 
+             method = "pearson", # correlation method
+             hist.col = "#00AFBB",
+             density = TRUE,  # show density plots
+             ellipses = TRUE # show correlation ellipses
+             )
+```
+<br>
+
+##### Interpretation
+<p>
+The Pearson correlation is used and according to the results: Relative humidity(RH) and Wind Speed are highly correlated. We will be using area as the response variable. 
+<p/>
+
+```{r}
+#log transformation the dataset
+Forest_Fires$Area <- log1p(Forest_Fires$Area)
+hist(Forest_Fires$Area)
+hist(log(Forest_Fires$Area+1))
+```
+<br>
+
+##### Interpretation
+<p>
+The logarithm function is applied to the Area variable transforming a highly skewed variable into a more normalized one.
+ 
+However, for this specific dataset, there are many data points with zero values in Area column after transformation. This simple transformation has distinct drawbacks, affecting regression accuracy.
+</p>
+
+<br>
+
+#### Build a few potential regression models using “ForestFireData”
+
+<br>
+
+##### Starting with building a very simple model:
+```{r}
+mod2 <- lm(Area ~., data = mydata)
+summary(mod2)
+```
+<br>
+
+##### Interpretation
+
+<p>It can be observed that, the model has low accuracy as the R-square is very small. The reason for this might be that the predictors might not have sufficient information to justify the response.Thus, to fix this, we will apply quadratic terms among the four FWI system indices which are- FFMC,DMCM,DC,ISI
+<p/>
+
+```{r}
+finalmod <- lm(Area ~ X+Y+Month + Day + (FFMC + DMC + DC + ISI)^2 + Temp + RH + Wind + Rain, data = mydata)
+summary(finalmod)
+```
+<br>
+
+##### Interpretation
+
+<p>Now this model looks much better than the previous model and now we have an acceptable F-test.
+</p>
+
+<br>
+
+```{r}
+#multiple regression (ML)
+# Set seed for reproducibility
+set.seed(1000)
+
+#set the training and testing dataset p=0.7
+#seprate the outcome from the predictor varaibles
+Forest_Fires_Area <- Forest_Fires$Area
+idx <- createDataPartition(Forest_Fires_Area, p = 0.7, list = FALSE)
+train_set <- Forest_Fires[idx, ]
+test_set <- Forest_Fires[-idx, ]
+
+regressorlm <- lm(Area ~.,data =train_set)
+summary(regressorlm)
+summary(regressorlm)$coefficient
+
+
+#make the prediction
+predicted_area1 <- predict(regressorlm, newdata = test_set)
+residuls1 <- test_set$Area[1:153]-predicted_area1[1:153]
+d1 <- data.frame("Predicted"= predicted_area1[1:153], "Actual"=test_set$Area[1:153], "Residul"= residuls1)
+
+accuracy(predicted_area1,test_set$Area)
+
+```
+
+<br>
+
+#### Perform regression diagnostics using both typical approach and enhanced approach
+
+```{r}
+# a. Typical Approach
+par(mfrow = c(2,2))
+plot(mod2)
+```
+
+<br>
+
+##### Interpretation
+<p> In the residual-fitted plot, the residuals bounce randomly around the 0 line, therefore the assumption that the relationship is linear is reasonable.
+
+In the Normall Q-Q plot, after zero on the x-axis, the points are mostly on the 45-degree line depicting its normality.
+
+In the Scale-Location plot, the points are randomly spread around a horizontal line, hence its homoscedasticity.
+
+In the Residuals-vs-Leverage plot, it can be observe that there are outliers that may be removed.
+</p>
+
+
+<br>
+```{r}
+# b. Enhanced Approach
+# To determine the Normality
+library(ggplot2)
+library(car)
+par(mfrow = c(1,1))
+qqPlot(mod2, labels = row.names(mydata), id.method = "identify", simulate = TRUE, plot.it=TRUE,
+ main = "Q-Q Plot")
+```
+<br>
+
+##### Interpretation
+
+There are a few outliers towards the end of the plot and the model doesn't meet the normality assumption well. 
+
+<br>
+```{r}
+#To check the Independence
+durbinWatsonTest(mod2)
+```
+
+```{r}
+# To check the Linearity
+library(car)
+crPlots(mod2)
+```
+<p>
+##### Interpretation
+The Component+Residual Plots shows the nonlinearity of the relationship between the independent variables (predictors) and the dependent variable, area. From the plots above, linearity assumption may not be confirmed.
+</p>
+<br>
+```{r}
+#To find the Homoscedasticity
+library(car)
+ncvTest(finalmod)
+```
+<br>
+
+<p>
+##### Interpretation
+p-value is significant suggesting that the constant variance assumption is not satisfied with the non-horizontal line.
+</p>
+
+<br>
+
+```{r}
+par(mfrow = c(1,1))
+spreadLevelPlot(finalmod)
+```
+<br>
+
+<p>
+##### Interpretation
+
+The Spread-level plot is for assessing constant error variance. The p-value is significant, suggesting that the constant variance assupmtion has not been met. The suggested power transformation is 0.177467 which confirms that transformation is needed as the value is moderately far from 1.
+</p>
+
+<br>
+
+```{r}
+# Multicollinearity
+library(car)
+vif(mod2)
+```
+
+```{r}
+library(car)
+sqrt(vif(mod2))>2
+```
+<br>
+
+#### Interpretation
+<p> As seen in the result above, all show FALSE, therefore, it suggests that there is no multicollinearity problem.
+</p>
+
+<br>
+
+#### Identify unusual observations and take corrective measures.
+
+<br>
+
+#### Unusual Observations
+```{r}
+# a. Outlier Test
+outlierTest(mod2)
+```
+<br>
+<p>
+##### Interpretation
+
+The outlier test shows No 239 is the outlier.
+</p>
+
+<br>
+
+```{r}
+# b. High leverage points
+hat.plot<-function(mod2)
+ {
+ co<-length(coefficients(mod2))
+ fi<-length(fitted(mod2))
+ plot(hatvalues(mod2), main="Index Plot of Hat testues")
+ abline(h=c(2,3)*co/fi,col="steelblue", lty=2)
+ identify(1:fi,hatvalues(mod2), names(hatvalues(mod2)))
+}
+hat.plot(mod2)
+
+```
+
+```{r}
+# c. Influential observation
+inf<-4/(nrow(mydata)-length(finalmod$coefficients)-2)
+plot(finalmod,which=4,cook.levels=inf)
+abline(h=inf,lty=2,col="orange")
+```
+<br>
+<p>
+##### Interpretation
+
+According to the influence plot, 313,380,416,239 are outliers.
+
+**Corrective measures**
+Deleting Observations Outliers are observations that are poorly fit by the regression model. If outliers are determined influential, they can be removed to avoid serious distortions in the regression calculations.This model only has 4 outliers, so they are not significantly influencial to the learning of the model.
+
+</p>
+
+<br>
+
+#### Corrective Measures
+```{r}
+# Deleting the outliers:
+mydata <- mydata[-c(313,380,416,239),]
+mydata
+```
+
+<br>
+
+#### Select the best regression model
+```{r}
+# Using anova() function to compare the models
+anova(mod2, finalmod)
+```
+
+<br>
+
+* We decide to go ahead with model 2 based on their AIC values and variance table.
+
+```{r}
+# Compare the models and select the best model
+AIC(mod2,finalmod)
+```
+
+<br>
+
+#### Fine tune the selection of predictor variables
+
+<br>
+
+**Will use the stepwise selection algorithm to find the most significant Factors in our model**
+
+
+```{r}
+library(tidyverse)
+library(caret)
+library(leaps)
+library(MASS)
+library(forecast)
+#stat: explanatory model/ best-fit purpose
+#For multiple regression model (lm)
+
+# Set seed for reproducibility
+set.seed(1000)
+
+#get the model with all predictor variables
+model <- lm(Area ~.,data = Forest_Fires)
+summary(model)
+summary(model)$coefficient
+accuracy(model)
+
+# Stepwise regression model
+step.model1 <- stepAIC(model, direction = "backward", #can change the direction 
+                      trace = FALSE)
+summary(step.model1) #return to the best final model
+accuracy(step.model1)
+
+```
+<br>
+
+**Since there are 12 variables, 12 models are created and we try to estimate their average prediction error**
+
+<br>
+
+```{r}
+# use 10-fold cross-validation to estimate the average prediction error (RMSE) of each of the 12 models 
+# Set seed for reproducibility
+set.seed(500)
+# Set up repeated k-fold cross-validation
+#use the 10-fold cross-validation
+train.control<- trainControl(method = "cv", number = 10)
+# Train the model
+step.model2 <- train(Area ~.,data = Forest_Fires,
+                    method = "leapSeq", 
+                    tuneGrid = data.frame(nvmax = 1:12),
+                    trControl = train.control
+                    )
+step.model2$results
+ #Fine tune the selection of predictor variables 
+
+step.model2$bestTune 
+ #therefore, the best prediction model with 3 predictor variables
+
+#get the final model
+summary(step.model2$finalModel)
+
+modelaaa <- lm(formula = Area ~ X + DC + Wind, data = Forest_Fires)
+summary(modelaaa)
+accuracy(modelaaa)
+
+```
+
+<br>
+
+```{r}
+#the second order linear model
+library(forecast)
+model2 <- lm(Area ~ X+Y+Month + Day + (FFMC + DMC + DC + ISI )^2+ Temp + RH + Wind+Rain,data=Forest_Fires)
+summary(model2)
+accuracy(model2)
+```
+
+<br>
+
+```{r}
+# Stepwise regression model
+step.model1 <- stepAIC(model2, direction = "backward", 
+                      trace = FALSE)
+summary(step.model1) #return to the best final model
+accuracy(step.model1)
+
+```
+
+<br>
+ 
+After fine tuning processes alongwith the 10 fold cross validation it has been confirmed that the model is Area = 0.511216 + X(0.043355) + Month(0.020352) + DMC(0.002095) +  RH(-0.005705) + Wind(0.069730)  with RMSE as 1.38.
+
+<br>
+
+```{r}
+set.seed(500)
+# Set up repeated k-fold cross-validation
+#use the 10-fold cross-validation
+train.control<- trainControl(method = "cv", number = 10)
+# Train the model
+step.model2 <- train(Area ~ X+Y+Month + Day + (FFMC + DMC + DC + ISI)^2 + Temp + RH + Wind+Rain,data = Forest_Fires,
+                    method = "leapSeq", 
+                    tuneGrid = data.frame(nvmax = 1:9),
+                    trControl = train.control
+                    )
+step.model2$results
+ #Fine tune the selection of predictor variables 
+step.model2$bestTune 
+ #therefore, the best prediction model with 3 predictor variables
+
+#get the final model
+summary(step.model2$finalModel)
+```
+
+<br>
+
+#### Interpret the prediction results
+
+<br>
+The step AIC is used to choose a model by AIC in a stepwise algorithm and fine tunes the model. With each step, a step wise selected model is returned. In the 10 fold cross validation process, our best and final model has three predictor variables namely X: x-axis spatial coordinate within the Montesinho park map: 1 to 9, DC: DC index from the FWI system: 7.9 to 860.6 and Wind. The RMSE is eventually reduced.
+
