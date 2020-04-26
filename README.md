@@ -1,2 +1,2 @@
-# DataMining-Visualization-In-R
-DataMining &amp; Visualization In R
+# Data Mining-Visualization-In-R
+Data Mining & Visualization In R
